@@ -1,0 +1,57 @@
+{
+  "name": "openfusion-mcp",
+  "version": "0.1.0",
+  "description": "Local MCP server implementing OpenRouter's Fusion panel architecture: fan-out + two-step judge.",
+  "license": "MIT",
+  "author": "Hashan Wickramasinghe",
+  "homepage": "https://github.com/hashangit/openfusion",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hashangit/openfusion.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hashangit/openfusion/issues"
+  },
+  "keywords": ["mcp", "model-context-protocol", "fusion", "llm", "multi-model", "openrouter", "ai", "agent", "judge", "synthesis"],
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "bin": {
+    "openfusion-mcp": "./dist/index.js",
+    "openfusion-ui": "./dist/ui-only.js"
+  },
+  "files": [
+    "dist",
+    "ui-dist",
+    "skill"
+  ],
+  "scripts": {
+    "build": "tsc && pnpm --filter ./ui run build && pnpm run copy-ui",
+    "copy-ui": "node --input-type=module -e \"import {cpSync,rmSync} from 'node:fs'; rmSync('ui-dist',{recursive:true,force:true}); cpSync('ui/dist','ui-dist',{recursive:true}); cpSync('public','ui-dist',{recursive:true});\"",
+    "dev": "tsx watch src/index.ts",
+    "dev:ui": "tsx src/ui-only.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.79.4",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "better-sqlite3": "12.10.1",
+    "env-paths": "4.0.0",
+    "express": "5.2.1",
+    "open": "11.0.0",
+    "zod": "3.25.67"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/express": "5.0.5",
+    "@types/node": "22.10.0",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  },
+  "packageManager": "pnpm@11.6.0"
+}

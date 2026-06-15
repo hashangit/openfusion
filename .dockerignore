@@ -1,0 +1,25 @@
+# Dependencies (installed inside the image)
+node_modules/
+ui/node_modules/
+
+# Build output (rebuilt inside the image)
+dist/
+ui-dist/
+ui/dist/
+
+# Logs & env
+*.log
+.env
+.env.*
+
+# Local runtime data
+.openfusion/
+
+# Dev / docs / specs not needed at runtime
+.git/
+.vscode/
+.idea/
+coverage/
+*.md
+!skill/SKILL.md
+specs/

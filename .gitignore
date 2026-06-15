@@ -1,0 +1,57 @@
+# ---- Dependencies ----
+node_modules/
+ui/node_modules/
+
+# ---- Build output ----
+dist/
+ui-dist/
+ui/dist/
+*.tsbuildinfo
+
+# ---- Logs / temp ----
+*.log
+npm-debug.log*
+pnpm-debug.log*
+*.tmp
+*.swp
+.cache/
+
+# ---- Environment & secrets (NEVER commit) ----
+.env
+.env.*
+!.env.example
+.openfusion/
+*.db
+*.db-shm
+*.db-wal
+
+# ---- Coverage ----
+coverage/
+
+# ---- OS files ----
+.DS_Store
+Thumbs.db
+
+# ---- Editor ----
+.vscode/
+.idea/
+
+# ---- Agent / tool caches (local-only, not part of the project) ----
+.zcode/
+.pi/
+.dual-graph/
+.dual-graph-context/
+.cursor/
+.codeium/
+.aider*
+# speckit: keep specs/ + memory + templates; ignore only ephemeral state
+.specify/artifacts/
+.specify/cache/
+
+# ---- Stray dev/debug scratch files ----
+*-debug.ts
+*-debug.mjs
+smoke.mjs
+boot-test.mjs
+client-test.mjs
+fusion-test.mjs

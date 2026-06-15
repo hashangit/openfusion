@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "openfusion": {
+      "command": "node",
+      "args": ["./dist/index.js"],
+      "env": {}
+    }
+  }
+}

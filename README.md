@@ -94,7 +94,11 @@ Keys are AES-256-GCM encrypted at rest (`secrets.enc` + a chmod-600 machine-boun
 
 ## The dashboard
 
-<p align="center"><em>glass-morphic, OpenFusion-branded · KPIs · fusions-per-day · cost-by-model · token-usage-by-model · expandable activity log</em></p>
+<p align="center">
+  <img src="public/OpenFusion-dashboard.png" alt="OpenFusion dashboard — KPIs, charts, and expandable activity log" width="100%" />
+</p>
+
+<p align="center"><em>Glass-morphic, OpenFusion-branded · KPIs · fusions-per-day · cost-by-model · token-usage-by-model · expandable activity log</em></p>
 
 Every fusion writes **one activity row + N+2 sub-call rows** (each candidate + the two judge steps) — so you can see exactly which model said what, cost how much, and took how long. That's the "activity as a dimension" powering the charts.
 

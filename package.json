@@ -1,6 +1,6 @@
 {
   "name": "openfusion-mcp",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Local MCP server implementing OpenRouter's Fusion panel architecture: fan-out + two-step judge.",
   "license": "MIT",
   "author": "Hashan Wickramasinghe",
@@ -19,13 +19,17 @@
   },
   "bin": {
     "openfusion-mcp": "./dist/index.js",
-    "openfusion-ui": "./dist/ui-only.js"
+    "openfusion-ui": "./dist/ui-only.js",
+    "openfusion-setup": "./dist/setup.js"
   },
   "files": [
     "dist",
     "ui-dist",
     "skill"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc && pnpm --filter ./ui run build && pnpm run copy-ui",
     "copy-ui": "node --input-type=module -e \"import {cpSync,rmSync} from 'node:fs'; rmSync('ui-dist',{recursive:true,force:true}); cpSync('ui/dist','ui-dist',{recursive:true}); cpSync('public','ui-dist',{recursive:true});\"",
@@ -34,7 +38,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.79.4",

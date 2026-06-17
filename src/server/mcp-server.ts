@@ -6,6 +6,7 @@ import { runFusion } from "../fusion/fusion.js";
 import { loadConfig, emptyConfig } from "../config/store.js";
 import { openDatabase } from "../store/db.js";
 import { paths, ensureHome } from "../util/paths.js";
+import { VERSION } from "../util/version.js";
 import type { DB } from "../store/db.js";
 
 const UI_URL = "http://localhost:9077";
@@ -71,7 +72,7 @@ export async function openDashboardToolHandler(): Promise<{ content: { type: "te
 
 /** Build and connect an McpServer with the fusion + open_dashboard tools. */
 export async function createMcpServer(options: McpServerOptions = {}): Promise<McpServer> {
-  const server = new McpServer({ name: "openfusion", version: "0.1.0" });
+  const server = new McpServer({ name: "openfusion", version: VERSION });
   if (!options.db) ensureHome(); // make sure ~/.openfusion exists before opening the DB
   const db = options.db ?? openDatabase(paths.db());
 
@@ -112,17 +113,8 @@ function makeProgressReporter(extra: ToolExtra): ((progress: number, total: numb
 
 /** Open the dashboard URL in a browser when a display is present; best-effort. */
 async function maybeOpenBrowser(): Promise<void> {
-  const hasDisplay =
-    process.platform === "darwin" ||
-    !!process.env.DISPLAY ||
-    !!process.env.FORCE_OPEN;
-  if (!hasDisplay) return;
-  try {
-    const open = (await import("open")).default;
-    await open(UI_URL);
-  } catch {
-    /* best-effort; the URL is already in the tool response */
-  }
+  const { openDashboard } = await import("../util/browser.js");
+  await openDashboard(UI_URL);
 }
 
 export { emptyConfig, UI_URL };

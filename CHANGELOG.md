@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-18
+
+### Added
+- **Published to npm** — `npx -y openfusion-mcp` now works with no clone/build. Every client snippet defaults to it.
+- **`npx openfusion-setup`** — interactive installer: picks your MCP client, writes the correct config snippet (`claude mcp add`, ZCode `mcp.servers`, Cursor `.cursor/mcp.json`, Zed `context_servers`, Codex `mcp_servers`, Gemini-CLI family, Cline, Claude Desktop…), and offers to install the agent skill.
+- **First-run UX** — on a fresh install the server prints a stderr banner (version, data path, configured status) and **opens the dashboard** automatically (when a display is present). Same for the standalone `openfusion-ui` bin.
+- **`GET /api/status`** — one lightweight call returning `{ version, home, configured, reasons?, firstRun, dbPath }` for the dashboard, agents, and CLI health checks.
+
+### Changed
+- **`GET /api/health`** now also returns `version` + `configured` (still has `ok:true` for back-compat).
+- **Version is no longer hardcoded** — read from `package.json` via a shared helper; the MCP handshake reports the real version (was stale at 0.1.0).
+- **Config upgrades print a notice** — when a v1 config is migrated to v2 on load, a one-time stderr message tells you (so you know a restart-after-update happened).
+
+### Fixed
+- **better-sqlite3 native-addon failures are now actionable** — instead of an opaque `MODULE_NOT_FOUND` stack trace, OpenFusion prints a clear "run `npm rebuild better-sqlite3`" message with the toolchain requirements.
+- **Docs**: README leads with `npx`; documents `OPENFUSION_HOME` (and that it prints on startup), the native-build requirement + recovery, an Updating section, and the client tool-call-timeout caveat (a client can time out while the server completes and logs the fusion — check Generations/Errors).
+
+## [0.1.2] - 2026-06-17
 ## [0.1.2] - 2026-06-17
 
 ### Added
@@ -69,7 +87,8 @@ The first public release. A local MCP server that brings OpenRouter's [Fusion](h
 - pnpm, TypeScript (ES2022, NodeNext, ESM), no bundler; `tsc` → `dist/`, Vite → `ui-dist/`.
 - stdout reserved for MCP JSON-RPC; all logs to stderr.
 
-[Unreleased]: https://github.com/hashangit/openfusion/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/hashangit/openfusion/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/hashangit/openfusion/releases/tag/v0.2.0
 [0.1.2]: https://github.com/hashangit/openfusion/releases/tag/v0.1.2
 [0.1.1]: https://github.com/hashangit/openfusion/releases/tag/v0.1.1
 [0.1.0]: https://github.com/hashangit/openfusion/releases/tag/v0.1.0

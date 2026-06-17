@@ -6,14 +6,18 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createMcpServer } from "./server/mcp-server.js";
 import { startUiServer } from "./server/ui-server.js";
+import { printStartupBanner } from "./util/startup.js";
 
 async function main(): Promise<void> {
+  // First-run banner (stderr) + auto-open the dashboard on a fresh install.
+  await printStartupBanner();
+
   const server = await createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  // The UI server is optional at startup (it's fully built in Phase 4 / US2).
-  // If it isn't ready yet, we log and continue — the MCP tool still works for fusions.
+  // The UI server is optional at startup. If it isn't ready, log and continue —
+  // the MCP tool still works for fusions.
   try {
     await startUiServer();
   } catch (e) {

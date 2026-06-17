@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hashangit/openfusion/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.1.2-4cd0b0.svg" /></a>
+  <a href="https://github.com/hashangit/openfusion/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.2.0-4cd0b0.svg" /></a>
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <a href="https://nodejs.org"><img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A522-3498db.svg" /></a>
   <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.7-3178c6.svg" /></a>
@@ -59,23 +59,42 @@ And when *not* to: routine coding, simple lookups, single-turn Q&A. Fusion is 2�
 
 ## Install
 
-Requires Node.js 22+ and [pnpm](https://pnpm.io).
+Requires **Node.js 22+**. (Published to npm — no clone needed for most users.)
+
+### One-command setup (recommended)
 
 ```bash
-git clone https://github.com/hashangit/openfusion.git
-cd openfusion
-pnpm install
-pnpm build          # tsc -> dist/ ; vite -> ui-dist/
+npx openfusion-setup
 ```
 
-Then add it to your MCP client — see **[INSTALL.md](./INSTALL.md)** for exact recipes for 18+ clients. The short version:
+This asks which MCP client you use, generates the correct config snippet (`npx -y openfusion-mcp` as the server command), writes it to the right file when safe, and offers to install the agent skill.
+
+### Or: register manually
+
+Point your MCP client at `npx -y openfusion-mcp` (or `node /path/to/openfusion/dist/index.js` if you cloned). See **[INSTALL.md](./INSTALL.md)** for exact recipes for 18+ clients (Claude Code, Cursor, Cline, Zed, Codex, Gemini CLI, ZCode, Claude Desktop, …). For **Claude Code** and **ZCode**, the repo's [`.mcp.json`](./.mcp.json) auto-loads when you open the project.
+
+### First run
+
+Start the server and, on first run, OpenFusion prints a banner to stderr and **opens the dashboard**:
 
 ```bash
-node dist/index.js                       # start the server (+ dashboard on :9077)
-# open http://localhost:9077 → configure candidates, judge, and API keys
+npx -y openfusion-mcp
+# → a browser opens at http://localhost:9077 to configure candidates, judge, and API keys
 ```
 
-For **Claude Code** and **ZCode**, the repo's [`.mcp.json`](./.mcp.json) is auto-loaded — just open the project and approve.
+### From source
+
+```bash
+git clone https://github.com/hashangit/openfusion.git && cd openfusion
+pnpm install && pnpm build     # tsc -> dist/ ; vite -> ui-dist/
+node dist/index.js
+```
+
+> **Native build note:** `better-sqlite3` compiles a native addon at install. On most platforms a prebuilt binary is fetched automatically. If install fails, run `npm rebuild better-sqlite3` (requires Python 3 + a C++ toolchain — Xcode CLT on macOS, `build-essential` on Linux). If the addon is missing at runtime, OpenFusion prints a clear fix-it message instead of a cryptic stack trace.
+
+## Where data lives
+
+OpenFusion stores config, encrypted keys, and the SQLite DB under `OPENFUSION_HOME` — defaulting to your OS data dir (`~/Library/Application Support/openfusion` on macOS, `~/.local/share/openfusion` on Linux). The **path is printed on every startup**, so you always know where your config/secrets are. Set `OPENFUSION_HOME` to override (e.g. for a separate profile). Restart the server after changing it — two servers with different `OPENFUSION_HOME`s see different configs.
 
 ## Configure
 
@@ -109,13 +128,23 @@ TypeScript (ESM, ES2022, NodeNext) · [`@earendil-works/pi-ai`](https://www.npmj
 ## Scripts
 
 ```bash
-pnpm build                 # tsc -> dist/ ; vite -> ui-dist/
-pnpm test                  # 38 tests, deterministic (pi-ai faux providers — no real API calls)
-pnpm dev                   # tsx watch (server)
-pnpm --filter ./ui run dev # vite dev server (UI, proxies /api to :9077)
-node dist/index.js         # MCP server (stdio) + dashboard
+npx openfusion-setup       # interactive installer (writes client config + installs skill)
+npx openfusion-mcp         # run the MCP server + dashboard
+pnpm build                 # tsc -> dist/ ; vite -> ui-dist/ (from source)
+pnpm test                  # 50 tests, deterministic (pi-ai faux providers — no real API calls)
+node dist/index.js         # MCP server (stdio) + dashboard (from source)
 node dist/ui-only.js       # standalone always-on dashboard
 ```
+
+## Updating
+
+```bash
+git pull && pnpm install && pnpm build   # from source; or just re-run npx for the published version
+```
+
+Then **restart the server** so it loads the new code — a running process won't pick up changes. Config schema upgrades are automatic on load (a one-time notice prints to stderr, e.g. `config upgraded from v1 → v2`). You won't lose your candidates/judge/keys.
+
+> **Client tool-call timeouts:** a fusion with several candidates + a judge can take ~30–90s (sometimes more). Some MCP clients enforce a tight tool-call ceiling (e.g. 60s). If a `fusion` call appears to fail from the client side, the server likely **completed and logged it anyway** — check the **Generations** or **Errors** tab in the dashboard (`http://localhost:9077`) for the result.
 
 ## Project layout
 

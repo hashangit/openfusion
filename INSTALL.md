@@ -47,13 +47,18 @@ Throughout, replace:
 
 ## Per-client setup
 
-The base server entry is always:
+> **Easiest:** run `npx openfusion-setup` — it asks your client, writes the right snippet, and installs the skill. The snippets below are for manual setup.
+>
+> **Default server command (npm):** `npx -y openfusion-mcp` — use this everywhere unless you cloned the repo. From-source users: `node /abs/path/to/OpenFusion/dist/index.js`.
+>
+> **`OPENFUSION_HOME`** (optional) points OpenFusion at a config/secrets/db dir. Omit `env` to use the OS default (`~/Library/Application Support/openfusion` on macOS). The active path prints on every startup.
+
+The base server entry (npx form) is:
 
 ```jsonc
 {
-  "command": "node",
-  "args": ["/abs/path/to/OpenFusion/dist/index.js"],
-  "env": { "OPENFUSION_HOME": "/abs/path/to/openfusion-data" }
+  "command": "npx",
+  "args": ["-y", "openfusion-mcp"]
 }
 ```
 

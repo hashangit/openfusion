@@ -13,6 +13,10 @@ import { providersRouter } from "./api/providers.js";
 import { testRouter } from "./api/test.js";
 import { statsRouter } from "./api/stats.js";
 import { activityRouter } from "./api/activity.js";
+import { statusRouter } from "./api/status.js";
+import { loadConfig } from "../config/store.js";
+import { isConfigured } from "../config/completeness.js";
+import { VERSION } from "../util/version.js";
 
 export interface UiServerOptions {
   db?: DB;
@@ -42,7 +46,13 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<{ ap
   app.use("/api/test", testRouter());
   app.use("/api/stats", statsRouter(db));
   app.use("/api/activity", activityRouter(db));
-  app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  app.use("/api/status", statusRouter());
+  // /api/health is a liveness ping (kept stable for back-compat) but now carries
+  // version + configured so a single call tells you both "is it up" and "is it ready".
+  app.get("/api/health", (_req, res) => {
+    const report = isConfigured(loadConfig());
+    res.json({ ok: true, version: VERSION, configured: report.configured });
+  });
 
   // Serve the built React UI (ui-dist) if present. SPA catch-all for client routing.
   // (Express 5 requires a named param instead of the "*" wildcard.)

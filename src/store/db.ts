@@ -1,9 +1,29 @@
 // SQLite via better-sqlite3 (WAL mode). Activities + sub_calls.
 // Migrations are idempotent and tracked in schema_migrations.
-import Database from "better-sqlite3";
+import { createRequire } from "node:module";
 import type { Database as DatabaseType } from "better-sqlite3";
 
 export type DB = DatabaseType;
+
+// Load the native addon with a clear error if it's missing/broken — the default
+// static import would throw an opaque MODULE_NOT_FOUND at module load.
+const require = createRequire(import.meta.url);
+type DatabaseCtor = new (path: string) => DatabaseType;
+function loadBetterSqlite(): DatabaseCtor {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require("better-sqlite3") as DatabaseCtor;
+  } catch {
+    console.error(
+      "\nOpenFusion: the better-sqlite3 native addon failed to load.\n" +
+        "This usually means it didn't compile during install.\n" +
+        "Fix: run `npm rebuild better-sqlite3` (or `pnpm rebuild better-sqlite3`) in the OpenFusion directory.\n" +
+        "Building from source requires Python 3 and a C++ toolchain (Xcode CLT on macOS, build-essential on Linux).\n",
+    );
+    process.exit(1);
+  }
+}
+const Database = loadBetterSqlite();
 
 /** Open (or create) the SQLite database with WAL + busy_timeout, and run migrations. */
 export function openDatabase(path: string): DB {

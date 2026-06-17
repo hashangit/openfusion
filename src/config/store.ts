@@ -34,16 +34,30 @@ export function migrate(raw: unknown): unknown {
   if (!raw || typeof raw !== "object") return raw;
   const obj = raw as Record<string, unknown>;
   const out: Record<string, unknown> = { ...obj };
+  let migrated = false;
   // judge (singular, v1) -> judges (plural, v2)
   if (!Array.isArray(out.judges) && obj.judge && typeof obj.judge === "object") {
     out.judges = [{ ...(obj.judge as object), enabled: true }];
     delete out.judge;
+    migrated = true;
   }
   // backfill candidate.enabled (v1 candidates had no enabled flag)
   if (Array.isArray(out.candidates)) {
-    out.candidates = (out.candidates as Array<Record<string, unknown>>).map((c) =>
-      c && typeof c === "object" && !("enabled" in c) ? { ...c, enabled: true } : c,
-    );
+    const before = out.candidates as Array<Record<string, unknown>>;
+    let backfilled = false;
+    const after = before.map((c) => {
+      if (c && typeof c === "object" && !("enabled" in c)) {
+        backfilled = true;
+        return { ...c, enabled: true };
+      }
+      return c;
+    });
+    if (backfilled) migrated = true;
+    out.candidates = after;
+  }
+  if (migrated) {
+    out.version = 2;
+    console.error("OpenFusion: config upgraded from v1 → v2 (judge→judges, enabled flags). Re-save via the dashboard to persist.");
   }
   return out;
 }

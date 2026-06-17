@@ -1,54 +1,60 @@
 ---
 name: openfusion
-description: Use the OpenFusion MCP server to fuse multiple LLMs' answers into one consolidated, higher-quality response for complex reasoning, deep research, and cross-model verification. Slower and costlier than a single call — only use when multiple perspectives add real value.
+description: Use the OpenFusion `fusion` tool to get a consolidated council-of-models answer for a hard, high-stakes decision — code review/QA after implementing, debug root-cause from a dossier you gathered, research consolidation, architecture/plan review, or a second opinion. Do the groundwork yourself first (read, code, search, reproduce), then call fusion ONCE with a rich dossier. Use it whenever you face a complex judgment where one model's answer isn't enough and the cost of being wrong is high — even if the user doesn't say "fusion."
 ---
 
 # OpenFusion
 
-OpenFusion is an MCP server that implements OpenRouter's "Fusion" panel architecture locally. When you call the `fusion` tool, it sends your prompt to 2–5 configured candidate models in parallel, runs a two-step judge (structured analysis, then synthesis), and returns a single consolidated answer that integrates consensus, reconciles contradictions, and fills blind spots across the candidates.
+**OpenFusion is your panel of expert reviewers, not another worker.** You are the executor: you read the code, run the tools, gather the evidence, and do the implementation. When you hit a genuinely hard judgment — one where a single model's answer isn't trustworthy enough and being wrong is expensive — you bring a **prepared dossier** to OpenFusion and get one consolidated answer back. Then you act on it.
 
-## WHEN to use OpenFusion
+A `fusion` call fans your prompt out to several models in parallel and a judge reconciles their answers into one (consensus, contradictions resolved, blind spots surfaced). It's ~2–3× slower and costlier than a normal call, and it returns **one** answer — so it rewards calling it once, well-prepared, over calling it repeatedly.
 
-Call `fusion` for tasks where multiple model perspectives genuinely improve the answer:
+## The mental model
 
-- **Complex reasoning** — tricky architectural decisions, multi-constraint design problems, subtle bugs where a second opinion helps.
-- **Deep research / source synthesis** — questions requiring thorough analysis across angles.
-- **Cross-model verification** — high-stakes answers where confidence that independent models agree is valuable.
-- **Hard-to-judge factual or technical questions** where a single model's answer isn't trustworthy enough on its own.
+- **You do the legwork.** Read files, run searches, reproduce the bug, write the code, gather sources. OpenFusion does none of this — it has no tools and sees only what you pass it.
+- **Bring a dossier, not a question.** A good fusion call hands the panel everything a senior reviewer would need: the relevant code, the error/trace, what you've tried, the constraints. `"how do I fix my bug?"` is a bad call; the bug + the failing code + the trace + your hypotheses is a good one.
+- **One call per hard problem.** Don't loop on fusion to incrementally work something. Prepare, ask once, read the answer, proceed. Don't call it again to validate its own answer.
 
-## WHEN NOT to use OpenFusion
+## Pre-flight gate (run this before every `fusion` call)
 
-Do **not** call `fusion` for work a single model handles well. It is **2–3× slower and costlier** than a normal call:
+Call `fusion` only when **all three** are true:
 
-- Routine coding, debugging, refactors, or file edits.
-- Simple lookups, definitions, or single-turn Q&A.
-- Trivial tasks — formatting, renaming, small fixes.
-- Anything where one model's answer is already sufficient.
+1. **I've already gathered the concrete material** (code/diff/error/reproduction/sources) — or the task is genuinely pure reasoning that needs no external input.
+2. **A single capable model probably isn't enough** — the decision is subtle, contested, high-stakes, or benefits from independent perspectives.
+3. **The stakes justify the wait** — being wrong is costly (production bug, irreversible action, architecture you'll build on).
 
-**Fusion is not a drop-in replacement for everyday model calls.** Default to the base model; reach for `fusion` selectively when the task warrants multiple perspectives.
+If any is false, don't call fusion: do the work yourself, or answer directly.
 
-## HOW to use it
+## When to use it
 
-OpenFusion is a **fusion engine, not an agent.** It does **not** call tools, browse the web, or gather information. Its only job is to fuse candidate outputs.
+- **Code review / QA** — *after* you've implemented something non-trivial; pass the diff + relevant files + requirements.
+- **Debug root-cause** — once you've reproduced and gathered the trace + suspect code + hypotheses; pass the dossier.
+- **Research consolidation** — after you've gathered sources/notes/snippets; pass the pile to be argued into one well-reasoned answer.
+- **Architecture / plan review** — before you build; pass the goals, constraints, and options.
+- **Second opinion** — a high-stakes, irreversible decision where you want independent agreement.
 
-- Provide the `prompt` directly.
-- If you've already gathered context (tool results, file contents, prior reasoning), pass it as `context` — OpenFusion includes it with the prompt for each candidate. Otherwise the candidates answer from the prompt alone.
+## When NOT to use it
+
+- Routine coding, edits, refactors, lookups, formatting, single-turn Q&A — anything one model handles.
+- As a *first* step ("let me ask fusion what to do"). It's a late-stage council, not a starter.
+- In a loop to chip away at a problem. Prepare, then ask once.
+- To answer something you already know or could trivially verify.
+
+## How to call it
 
 ```
-fusion({ prompt: "<the question>", context: "<optional background you already gathered>" })
+fusion({ prompt: "<the specific question for the panel>", context: "<the dossier: code, errors, what you tried, constraints>" })
 ```
+
+`context` is where the dossier goes — it's included with the prompt for every candidate. Put the concrete material there; keep the `prompt` the crisp question you want answered.
+
+## Going deeper (read on demand)
+
+- **`references/workflows.md`** — the five named patterns above in full: what to gather before each, how to shape the prompt, what a good dossier looks like. Read it the first time you use fusion for a given pattern (review, debug, research, architecture).
+- **`references/examples.md`** — side-by-side bad-vs-good fusion calls + tuned prompt templates. Read it if your fusion results feel generic or shallow.
 
 ## Constraints
 
-- **Minimum 2, maximum 5 candidate models.** The user configures these (plus the judge) in the dashboard.
-- If OpenFusion returns `isError: true` directing you to `http://localhost:9077`, it isn't configured yet — tell the user to open that URL and set up candidates, a judge, and API keys.
-- A fusion where some candidates fail (timeout/error) still returns a consolidated answer as long as ≥2 candidates succeeded. Fewer than 2 survivors returns an error.
-
-## Setup reminder for the user
-
-If the `fusion` tool reports the server is unconfigured, the user must open **http://localhost:9077** and configure:
-1. 2–5 candidate models (provider + model each).
-2. One judge model (used for both analysis and synthesis).
-3. An API key for every provider referenced (one key per provider, shared across slots).
-
-Configuration takes effect immediately — no restart needed.
+- Min 2 / max 5 candidate models (max lifts in Benchmark Mode); exactly 1 enabled judge. The user configures these in the dashboard.
+- If a call returns `isError: true` pointing to `http://localhost:9077`, OpenFusion isn't configured — tell the user to open that URL and set up candidates, a judge, and API keys. No restart needed.
+- Partial failures are fine: if some candidates time out or error but ≥2 succeed, you still get a consolidated answer. Only <2 survivors returns an error.

@@ -237,24 +237,24 @@ If your client supports shell/file tools, paste this and let the agent do it (it
 
 ## Install the OpenFusion skill (recommended)
 
-The [`skill/SKILL.md`](./skill/SKILL.md) tells your agent **when to use Fusion** (complex reasoning, deep research, cross-model verification, high-stakes consensus) and **when not to** (routine coding, single-turn Q&A, trivial tasks). Drop it into your client's skills folder so the agent self-governs its Fusion usage.
+The [`skill/`](./skill) folder ships a tiered skill: a lightweight `SKILL.md` (always loaded when triggered) that teaches the agent the mental model — **it does the groundwork, then calls `fusion` once with a prepared dossier** — plus on-demand `references/` (workflows + examples) it reads as needed. Drop the whole folder into your client's skills location so the agent self-governs its Fusion usage.
 
 | Client | Skills path |
 |--------|-------------|
-| Claude Code | `.claude/skills/openfusion/SKILL.md` |
-| ZCode | `.zcode/skills/openfusion/SKILL.md` |
-| Antigravity | `.agent/skills/openfusion/SKILL.md` |
-| Codebuff | `.codebuff/skills/openfusion/SKILL.md` |
+| Claude Code | `.claude/skills/openfusion/` |
+| ZCode | `.zcode/skills/openfusion/` |
+| Antigravity | `.agent/skills/openfusion/` |
+| Codebuff | `.codebuff/skills/openfusion/` |
 
 ```bash
-# Claude Code example:
+# Claude Code example — copy the whole skill folder (SKILL.md + references/):
 mkdir -p ~/.claude/skills/openfusion
-cp /abs/path/to/OpenFusion/skill/SKILL.md ~/.claude/skills/openfusion/SKILL.md
+cp -r /abs/path/to/OpenFusion/skill/* ~/.claude/skills/openfusion/
 ```
 
 Or just ask your agent:
 
-> Install the OpenFusion skill: copy `/abs/path/to/OpenFusion/skill/SKILL.md` into this client's skills folder as `openfusion/SKILL.md`.
+> Install the OpenFusion skill: copy everything under `/abs/path/to/OpenFusion/skill/` into this client's skills folder under `openfusion/` (so the result is `openfusion/SKILL.md` plus `openfusion/references/`).
 
 ## Verify
 

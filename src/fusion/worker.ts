@@ -1,6 +1,6 @@
 // Worker: a single-shot candidate generation. No tools (Constitution I).
 import { runComplete, extractText, totalCost, type AnyModel } from "../providers/pi-ai-bridge.js";
-import { withTimeout, TimeoutError } from "../util/timeout.js";
+import { withRetryTimeout, TimeoutError } from "../util/timeout.js";
 import { WORKER_PROMPT } from "./prompts.js";
 
 export interface WorkerInput {
@@ -45,13 +45,14 @@ export async function runWorker(input: WorkerInput): Promise<WorkerResult> {
     if (!input.model) {
       return finish({ status: "error", error: `could not resolve model ${input.provider}/${input.modelId}` });
     }
-    const msg = await withTimeout(
-      runComplete(input.model, {
-        systemPrompt: WORKER_PROMPT,
-        messages: [{ role: "user", content: userContent, timestamp: startedAt }],
-      }, input.apiKey),
-      input.timeoutMs,
-      `worker ${input.slotId}`,
+    // Retry on failure (timeout OR error), resetting the timeout each attempt.
+    const msg = await withRetryTimeout(
+      () =>
+        runComplete(input.model!, {
+          systemPrompt: WORKER_PROMPT,
+          messages: [{ role: "user", content: userContent, timestamp: startedAt }],
+        }, input.apiKey),
+      { timeoutMs: input.timeoutMs, label: `worker ${input.slotId}`, attempts: 3 },
     );
     const text = extractText(msg);
     if (!text) return finish({ status: "error", error: "empty response" });

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Per-call timeout default raised from 2 min to 5 min** (`settings.workerTimeoutMs`), giving slower providers more room. Still user-configurable (5 s – 10 min); lower it if your MCP client enforces a tighter tool-call ceiling.
+- **Retry on failure** — workers and both judge steps now retry up to 3 times on a transient error or timeout (the per-call timeout resets on each attempt; exponential backoff between attempts). Previously a single timeout/error ended the call.
+
+### Fixed
+- The two judge steps (analysis + synthesis) now have a per-call timeout + retry, matching the workers. Previously a hung judge would hang the whole fusion indefinitely.
+
 ## [0.1.0] - 2026-06-16
 
 The first public release. A local MCP server that brings OpenRouter's [Fusion](https://openrouter.ai/blog/announcements/fusion-beats-frontier/) panel architecture to any MCP-capable client — fan a prompt out to 2–5 candidate models, run a two-step judge, return one consolidated answer.

@@ -21,11 +21,13 @@ export type JudgeConfig = z.infer<typeof JudgeConfigSchema>;
 
 export const SettingsSchema = z
   .object({
-    workerTimeoutMs: z.number().int().min(5_000).max(600_000).default(120_000),
+    // Per-call timeout, reset on each retry. Default 5 min so slow providers
+    // have room; users hitting a client tool-call ceiling can lower this.
+    workerTimeoutMs: z.number().int().min(5_000).max(600_000).default(300_000),
     uiPort: z.number().int().min(1).max(65535).default(9077),
     bind: z.string().regex(LOOPBACK, "must be a loopback address").default("127.0.0.1"),
   })
-  .default({ workerTimeoutMs: 120_000, uiPort: 9077, bind: "127.0.0.1" });
+  .default({ workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1" });
 export type Settings = z.infer<typeof SettingsSchema>;
 
 export const AppConfigSchema = z.object({
@@ -49,5 +51,5 @@ export const RawConfigSchema = z
     judge: JudgeConfigSchema.optional(),
     settings: SettingsSchema,
   })
-  .default({ settings: { workerTimeoutMs: 120_000, uiPort: 9077, bind: "127.0.0.1" } });
+  .default({ settings: { workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1" } });
 export type RawConfig = z.infer<typeof RawConfigSchema>;

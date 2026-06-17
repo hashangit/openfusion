@@ -1,6 +1,6 @@
 // T020 (worker) + T021 (judge) + T022 (fusion orchestration) — all faux-provider driven.
 // Deterministic: no real API calls.
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -95,13 +95,15 @@ describe("worker (T020)", () => {
     reg.unregister();
   });
 
-  it("records a timeout when the model hangs past the limit", async () => {
+  it("records a timeout when the model hangs past the limit on every retry", async () => {
     const reg = registerFauxProvider({ provider: WP, api: "faux-w", models: [{ id: "w1" }] });
+    // A factory that always hangs (so every retry attempt genuinely times out).
     const hang: FauxResponseFactory = async () => {
       await new Promise((r) => setTimeout(r, 5_000));
       return fauxAssistantMessage("late");
     };
-    reg.setResponses([hang]);
+    // Queue enough hang responses for all 3 retry attempts.
+    reg.setResponses([hang, hang, hang]);
     const res = await runWorker({
       slotId: "c1",
       provider: WP,
@@ -109,10 +111,76 @@ describe("worker (T020)", () => {
       model: reg.getModel("w1"),
       prompt: "hi",
       apiKey: "k",
-      timeoutMs: 50, // very short
+      timeoutMs: 50, // very short; resets on each of the 3 attempts
     });
     expect(res.status).toBe("timeout");
     reg.unregister();
+  });
+
+  it("retries and succeeds when transient errors are followed by a good response", async () => {
+    // Real providers reject on transient failures (unlike the faux provider,
+    // which catches throws and returns an error message). Use vi.spyOn to
+    // simulate reject-then-recover across the 3 retry attempts.
+    let invocations = 0;
+    const bridge = await import("../src/providers/pi-ai-bridge.js");
+    const spy = vi
+      .spyOn(bridge, "runComplete")
+      .mockImplementation(async () => {
+        invocations++;
+        if (invocations < 3) throw new Error("transient 503");
+        return {
+          role: "assistant" as const,
+          content: [{ type: "text" as const, text: "recovered" }],
+          stopReason: "stop",
+          usage: {
+            input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          },
+        };
+      });
+    try {
+      const res = await runWorker({
+        slotId: "c1",
+        provider: WP,
+        modelId: "w1",
+        model: { id: "w1", name: "w1", api: "faux-w", provider: WP } as never,
+        prompt: "hi",
+        apiKey: "k",
+        timeoutMs: 5_000,
+      });
+      expect(res.status).toBe("ok");
+      expect(res.content).toBe("recovered");
+      expect(invocations).toBe(3); // 2 failures + 1 success
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("gives up after 3 failed attempts and reports the error", async () => {
+    let invocations = 0;
+    const bridge = await import("../src/providers/pi-ai-bridge.js");
+    const spy = vi
+      .spyOn(bridge, "runComplete")
+      .mockImplementation(async () => {
+        invocations++;
+        throw new Error("persistent 500");
+      });
+    try {
+      const res = await runWorker({
+        slotId: "c1",
+        provider: WP,
+        modelId: "w1",
+        model: { id: "w1", name: "w1", api: "faux-w", provider: WP } as never,
+        prompt: "hi",
+        apiKey: "k",
+        timeoutMs: 5_000,
+      });
+      expect(res.status).toBe("error");
+      expect(res.error).toMatch(/persistent 500/);
+      expect(invocations).toBe(3); // exhausted all attempts
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

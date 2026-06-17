@@ -18,7 +18,7 @@ This split exists because OpenRouter's data shows ~3/4 of the performance lift c
 
 ### III. Resilient by Default
 
-Fan-out is parallel via `Promise.allSettled` with a per-worker timeout; the call proceeds with survivors and errors only when fewer than **2** candidates succeed. The slowest worker must not sink the call, and total wall-clock must stay under the typical client tool-call timeout (~4 min). Progress is reported at each stage via `notifications/progress` (best-effort; correctness never depends on it).
+Fan-out is parallel via `Promise.allSettled` with a per-call timeout (default 5 min) that resets on each of up to 3 retry attempts; the call proceeds with survivors and errors only when fewer than **2** candidates succeed. The slowest worker must not sink the call. Total wall-clock should stay under typical client tool-call ceilings (~4 min on some clients); users on those clients can lower `settings.workerTimeoutMs`. Progress is reported at each stage via `notifications/progress` (best-effort; correctness never depends on it).
 
 ### IV. Secrets Are Encrypted at Rest
 

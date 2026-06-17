@@ -160,7 +160,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
     return failWithJudgeError(input, activityId, startedAt, survivorCount, workerResults, "analysis", `could not resolve judge model ${judge.provider}/${judge.model}`);
   }
 
-  const analysis = await runAnalysis(judgeModel, input.prompt, candidateViews, judgeApiKey);
+  const analysis = await runAnalysis(judgeModel, input.prompt, candidateViews, judgeApiKey, timeoutMs);
   recordSubCall(input.db, {
     activity_id: activityId,
     role: "judge_analysis",
@@ -180,7 +180,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   report(2, 3, "Analysis complete; synthesizing…");
 
   // --- Judge step 2: synthesis ---
-  const synth = await runSynthesis(judgeModel, input.prompt, candidateViews, analysis.value!, judgeApiKey);
+  const synth = await runSynthesis(judgeModel, input.prompt, candidateViews, analysis.value!, judgeApiKey, timeoutMs);
   recordSubCall(input.db, {
     activity_id: activityId,
     role: "judge_synthesis",

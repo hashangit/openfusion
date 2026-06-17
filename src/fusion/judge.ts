@@ -3,6 +3,7 @@
 // Step 2 = synthesis text from candidates + analysis only.
 import { Type, type Tool, type Context } from "@earendil-works/pi-ai";
 import { runComplete, extractText, extractToolCall, totalCost, type AnyModel } from "../providers/pi-ai-bridge.js";
+import { withRetryTimeout } from "../util/timeout.js";
 import { ANALYSIS_PROMPT, SYNTHESIS_PROMPT } from "./prompts.js";
 
 export interface AnalysisShape {
@@ -47,6 +48,7 @@ export async function runAnalysis(
   prompt: string,
   candidates: CandidateView[],
   apiKey: string,
+  timeoutMs: number,
 ): Promise<JudgeStepResult<AnalysisShape>> {
   const ctx: Context = {
     systemPrompt: ANALYSIS_PROMPT,
@@ -54,7 +56,11 @@ export async function runAnalysis(
     tools: [analysisTool],
   };
   try {
-    const msg = await runComplete(model, ctx, apiKey);
+    const msg = await withRetryTimeout(() => runComplete(model, ctx, apiKey), {
+      timeoutMs,
+      label: "judge analysis",
+      attempts: 3,
+    });
     const call = extractToolCall<AnalysisShape>(msg, "record_analysis");
     if (!call) {
       return {
@@ -80,13 +86,18 @@ export async function runSynthesis(
   candidates: CandidateView[],
   analysis: AnalysisShape,
   apiKey: string,
+  timeoutMs: number,
 ): Promise<JudgeStepResult<string>> {
   const ctx: Context = {
     systemPrompt: SYNTHESIS_PROMPT,
     messages: [{ role: "user", content: synthesisUserContent(prompt, candidates, analysis), timestamp: Date.now() }],
   };
   try {
-    const msg = await runComplete(model, ctx, apiKey);
+    const msg = await withRetryTimeout(() => runComplete(model, ctx, apiKey), {
+      timeoutMs,
+      label: "judge synthesis",
+      attempts: 3,
+    });
     const text = extractText(msg);
     if (!text) return { ok: false, error: "synthesis produced no text" };
     return {

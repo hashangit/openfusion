@@ -77,10 +77,18 @@ export function maskedPresence(
   return { providers, referenced };
 }
 
-/** The unique set of provider ids referenced by the current config (candidates + judge). */
+/**
+ * The unique set of provider ids referenced by the current config's ENABLED
+ * candidates + ENABLED judges. (Disabled slots don't need keys.) Powers the
+ * API Keys page's completeness badge.
+ */
 export function referencedProviders(config: RawConfig): string[] {
   const set = new Set<string>();
-  for (const c of config.candidates ?? []) set.add(c.provider);
-  if (config.judge) set.add(config.judge.provider);
+  for (const c of config.candidates ?? []) {
+    if (c.enabled !== false) set.add(c.provider);
+  }
+  for (const j of config.judges ?? []) {
+    if (j.enabled !== false) set.add(j.provider);
+  }
   return [...set].sort();
 }

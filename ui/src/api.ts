@@ -3,16 +3,18 @@ export interface CandidateSlot {
   id: string;
   provider: string;
   model: string;
+  enabled: boolean;
 }
 export interface JudgeConfig {
   provider: string;
   model: string;
+  enabled: boolean;
 }
 export interface AppConfig {
   version: number;
   candidates: CandidateSlot[];
-  judge: JudgeConfig;
-  settings: { workerTimeoutMs: number; uiPort: number; bind: string };
+  judges: JudgeConfig[];
+  settings: { workerTimeoutMs: number; uiPort: number; bind: string; benchmarkMode: boolean };
   configured: boolean;
 }
 export interface SecretsView {
@@ -115,4 +117,19 @@ export const api = {
     );
   },
   getActivityDetail: (id: string) => getJSON<Activity>(`/api/activity/${id}`),
+  /** Failed/partial activities only (client-side filter — volume is low). */
+  getErrors: async (opts: { limit?: number; offset?: number } = {}): Promise<{ total: number; items: Activity[] }> => {
+    const r = await api.getActivity({ limit: opts.limit ?? 100, offset: opts.offset ?? 0 });
+    return { total: r.items.filter((a) => a.status !== "success").length, items: r.items.filter((a) => a.status !== "success") };
+  },
 };
+
+/** Copy text to the clipboard, returning false if unavailable (e.g. insecure context). */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}

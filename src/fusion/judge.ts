@@ -40,6 +40,8 @@ export interface JudgeStepResult<T> {
   value?: T;
   error?: string;
   usage?: { input: number; output: number; cost: number };
+  /** Wall-clock of the call (incl. retries), in ms. Populated on both ok and !ok. */
+  latencyMs: number;
 }
 
 /** Step 1: analysis. Forces the record_analysis tool call. */
@@ -55,6 +57,8 @@ export async function runAnalysis(
     messages: [{ role: "user", content: analysisUserContent(prompt, candidates), timestamp: Date.now() }],
     tools: [analysisTool],
   };
+  const startedAt = Date.now();
+  const latencyMs = () => Date.now() - startedAt;
   try {
     const msg = await withRetryTimeout(() => runComplete(model, ctx, apiKey), {
       timeoutMs,
@@ -67,15 +71,17 @@ export async function runAnalysis(
         ok: false,
         error: "analysis step did not emit a record_analysis tool call",
         usage: { input: msg.usage.input, output: msg.usage.output, cost: totalCost(msg.usage) },
+        latencyMs: latencyMs(),
       };
     }
     return {
       ok: true,
       value: call.arguments,
       usage: { input: msg.usage.input, output: msg.usage.output, cost: totalCost(msg.usage) },
+      latencyMs: latencyMs(),
     };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: (e as Error).message, latencyMs: latencyMs() };
   }
 }
 
@@ -92,6 +98,8 @@ export async function runSynthesis(
     systemPrompt: SYNTHESIS_PROMPT,
     messages: [{ role: "user", content: synthesisUserContent(prompt, candidates, analysis), timestamp: Date.now() }],
   };
+  const startedAt = Date.now();
+  const latencyMs = () => Date.now() - startedAt;
   try {
     const msg = await withRetryTimeout(() => runComplete(model, ctx, apiKey), {
       timeoutMs,
@@ -99,14 +107,15 @@ export async function runSynthesis(
       attempts: 3,
     });
     const text = extractText(msg);
-    if (!text) return { ok: false, error: "synthesis produced no text" };
+    if (!text) return { ok: false, error: "synthesis produced no text", latencyMs: latencyMs() };
     return {
       ok: true,
       value: text,
       usage: { input: msg.usage.input, output: msg.usage.output, cost: totalCost(msg.usage) },
+      latencyMs: latencyMs(),
     };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: (e as Error).message, latencyMs: latencyMs() };
   }
 }
 

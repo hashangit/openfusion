@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-16
+
+### Added
+- **On/off toggles** for candidates and judges — configure many, enable the ones you want to fuse with. Candidates enforce 2–5 enabled (min/max); judges enforce exactly 1 enabled.
+- **Benchmark Mode** (Candidates page, default off) — lifts the max-candidate limit and forces a 10-minute candidate timeout, for comparing many models at once.
+- **Error Log tab** — a dedicated troubleshooting view listing failed/partial fusions with a one-click **copy** button per activity (copies the full activity JSON incl. sub_calls + error).
+- **Config schema v2** with automatic v1→v2 migration on load (single `judge` → `judges[]`; candidates gain `enabled`; settings gain `benchmarkMode`).
+
+### Fixed
+- **Judge latency was always 0** — both judge steps (analysis, synthesis) now record real wall-clock latency (incl. retry time) in the dashboard's per-step breakdown.
+
+### Changed
+- `judge` (single object) is now `judges` (list); each judge has an `enabled` flag. Only the first enabled judge runs.
+- Disabled candidates/judges no longer require API keys (the API Keys page only shows providers used by enabled slots).
+- Candidates enforce their 2–5 range on **enabled** slots (not total); benchmark mode lifts the 5 cap.
+
+## [0.1.0] - 2026-06-16
+
 ### Changed
 - **Per-call timeout default raised from 2 min to 5 min** (`settings.workerTimeoutMs`), giving slower providers more room. Still user-configurable (5 s – 10 min); lower it if your MCP client enforces a tighter tool-call ceiling.
 - **Retry on failure** — workers and both judge steps now retry up to 3 times on a transient error or timeout (the per-call timeout resets on each attempt; exponential backoff between attempts). Previously a single timeout/error ended the call.
@@ -40,5 +58,6 @@ The first public release. A local MCP server that brings OpenRouter's [Fusion](h
 - pnpm, TypeScript (ES2022, NodeNext, ESM), no bundler; `tsc` → `dist/`, Vite → `ui-dist/`.
 - stdout reserved for MCP JSON-RPC; all logs to stderr.
 
-[Unreleased]: https://github.com/hashangit/openfusion/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/hashangit/openfusion/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/hashangit/openfusion/releases/tag/v0.1.1
 [0.1.0]: https://github.com/hashangit/openfusion/releases/tag/v0.1.0

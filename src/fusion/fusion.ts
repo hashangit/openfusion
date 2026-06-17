@@ -59,9 +59,23 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   }
 
   // Snapshot the config at fusion start (in-flight fusions use their starting config — F5).
-  const candidates = input.config.candidates!;
-  const judge = input.config.judge!;
-  const timeoutMs = input.config.settings.workerTimeoutMs;
+  // Only ENABLED candidates fan out; the first ENABLED judge is used.
+  const candidates = (input.config.candidates ?? []).filter((c) => c.enabled !== false);
+  const judge = (input.config.judges ?? []).find((j) => j.enabled !== false);
+  const benchmark = input.config.settings.benchmarkMode === true;
+  // Benchmark mode forces a 10-min candidate timeout; the judge always uses the
+  // user's configured workerTimeoutMs (a judge is one call, not benchmarked).
+  const candidateTimeoutMs = benchmark ? 600_000 : input.config.settings.workerTimeoutMs;
+  const judgeTimeoutMs = input.config.settings.workerTimeoutMs;
+  if (!judge) {
+    // isConfigured() should have caught this, but guard anyway.
+    return {
+      ok: false,
+      error: "No enabled judge. Open http://localhost:9077 and enable one judge.",
+      needsConfig: true,
+      status: "error",
+    };
+  }
   const activityId = randomUUID();
   const startedAt = Date.now();
 
@@ -96,7 +110,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
         prompt: input.prompt,
         context: input.context,
         apiKey: getKey(c.provider, secretsPath, keyPath) ?? "",
-        timeoutMs,
+        timeoutMs: candidateTimeoutMs,
       }),
     ),
   );
@@ -160,7 +174,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
     return failWithJudgeError(input, activityId, startedAt, survivorCount, workerResults, "analysis", `could not resolve judge model ${judge.provider}/${judge.model}`);
   }
 
-  const analysis = await runAnalysis(judgeModel, input.prompt, candidateViews, judgeApiKey, timeoutMs);
+  const analysis = await runAnalysis(judgeModel, input.prompt, candidateViews, judgeApiKey, judgeTimeoutMs);
   recordSubCall(input.db, {
     activity_id: activityId,
     role: "judge_analysis",
@@ -169,7 +183,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
     input_tokens: analysis.usage?.input ?? 0,
     output_tokens: analysis.usage?.output ?? 0,
     cost: analysis.usage?.cost ?? 0,
-    latency_ms: 0,
+    latency_ms: analysis.latencyMs,
     status: analysis.ok ? "ok" : "error",
     error: analysis.error ?? null,
   });
@@ -180,7 +194,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   report(2, 3, "Analysis complete; synthesizing…");
 
   // --- Judge step 2: synthesis ---
-  const synth = await runSynthesis(judgeModel, input.prompt, candidateViews, analysis.value!, judgeApiKey, timeoutMs);
+  const synth = await runSynthesis(judgeModel, input.prompt, candidateViews, analysis.value!, judgeApiKey, judgeTimeoutMs);
   recordSubCall(input.db, {
     activity_id: activityId,
     role: "judge_synthesis",
@@ -189,7 +203,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
     input_tokens: synth.usage?.input ?? 0,
     output_tokens: synth.usage?.output ?? 0,
     cost: synth.usage?.cost ?? 0,
-    latency_ms: 0,
+    latency_ms: synth.latencyMs,
     status: synth.ok ? "ok" : "error",
     error: synth.error ?? null,
   });

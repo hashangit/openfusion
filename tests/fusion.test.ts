@@ -60,11 +60,11 @@ afterEach(() => {
   clearModelDescriptors();
 });
 
-function config(candidates: { id: string; model: string }[], judgeModel: string): RawConfig {
+function config(candidates: { id: string; model: string; enabled?: boolean }[], judgeModel: string): RawConfig {
   return {
-    candidates: candidates.map((c) => ({ id: c.id, provider: PROVIDER, model: c.model })),
-    judge: { provider: JUDGE_PROVIDER, model: judgeModel },
-    settings: { workerTimeoutMs: 5_000, uiPort: 9077, bind: "127.0.0.1" },
+    candidates: candidates.map((c) => ({ id: c.id, provider: PROVIDER, model: c.model, enabled: c.enabled ?? true })),
+    judges: [{ provider: JUDGE_PROVIDER, model: judgeModel, enabled: true }],
+    settings: { workerTimeoutMs: 5_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false },
   };
 }
 
@@ -415,5 +415,149 @@ describe("fusion orchestration (T022)", () => {
     expect(res.error).toMatch(/configured/i);
     // No activity should have been logged.
     expect(db.prepare("SELECT COUNT(*) AS n FROM activities").get()).toEqual({ n: 0 });
+  });
+
+  it("records judge latency > 0 for both analysis and synthesis", async () => {
+    const wreg = registerFauxProvider({ provider: PROVIDER, api: "faux-w", models: [{ id: "w1" }] });
+    const jreg = registerFauxProvider({ provider: JUDGE_PROVIDER, api: "faux-j", models: [{ id: "j1" }] });
+    wreg.setResponses([fauxAssistantMessage("a"), fauxAssistantMessage("b")]);
+    jreg.setResponses([
+      fauxAssistantMessage([fauxToolCall("record_analysis", { consensus: [], contradictions: [], partialCoverage: [], uniqueInsights: [], blindSpots: [] })]),
+      fauxAssistantMessage("final"),
+    ]);
+    const res = await runFusion({
+      prompt: "x",
+      config: config([{ id: "c1", model: "w1" }, { id: "c2", model: "w1" }], "j1"),
+      db,
+      secretsPath: join(home, "secrets.enc"),
+      keyPath: join(home, "master.key"),
+    });
+    expect(res.ok).toBe(true);
+    const act = getActivity(db, res.activityId!)!;
+    const analysisLatency = act.sub_calls.find((s) => s.role === "judge_analysis")!.latency_ms;
+    const synthLatency = act.sub_calls.find((s) => s.role === "judge_synthesis")!.latency_ms;
+    // Faux provider is near-instant (sub-ms), so assert the value is a recorded
+    // number (not the old hardcoded 0 placeholder). Real providers show real ms.
+    expect(typeof analysisLatency).toBe("number");
+    expect(typeof synthLatency).toBe("number");
+    expect(analysisLatency).toBeGreaterThanOrEqual(0);
+    expect(synthLatency).toBeGreaterThanOrEqual(0);
+    wreg.unregister();
+    jreg.unregister();
+  });
+
+  it("only fans out ENABLED candidates (disabled ones excluded)", async () => {
+    const wreg = registerFauxProvider({ provider: PROVIDER, api: "faux-w", models: [{ id: "w1" }] });
+    const jreg = registerFauxProvider({ provider: JUDGE_PROVIDER, api: "faux-j", models: [{ id: "j1" }] });
+    wreg.setResponses([fauxAssistantMessage("a"), fauxAssistantMessage("b")]); // only 2 enabled
+    jreg.setResponses([
+      fauxAssistantMessage([fauxToolCall("record_analysis", { consensus: [], contradictions: [], partialCoverage: [], uniqueInsights: [], blindSpots: [] })]),
+      fauxAssistantMessage("final"),
+    ]);
+    const res = await runFusion({
+      prompt: "x",
+      config: config(
+        [
+          { id: "c1", model: "w1", enabled: true },
+          { id: "c2", model: "w1", enabled: true },
+          { id: "c3", model: "w1", enabled: false }, // disabled — must not be called
+        ],
+        "j1",
+      ),
+      db,
+      secretsPath: join(home, "secrets.enc"),
+      keyPath: join(home, "master.key"),
+    });
+    expect(res.ok).toBe(true);
+    const act = getActivity(db, res.activityId!)!;
+    expect(act.candidate_count).toBe(2); // only the 2 enabled
+    expect(act.sub_calls.filter((s) => s.role === "worker").length).toBe(2);
+    wreg.unregister();
+    jreg.unregister();
+  });
+
+  it("picks the first ENABLED judge (ignores disabled judges)", async () => {
+    const wreg = registerFauxProvider({ provider: PROVIDER, api: "faux-w", models: [{ id: "w1" }] });
+    const jreg = registerFauxProvider({ provider: JUDGE_PROVIDER, api: "faux-j", models: [{ id: "j1" }] });
+    wreg.setResponses([fauxAssistantMessage("a"), fauxAssistantMessage("b")]);
+    jreg.setResponses([
+      fauxAssistantMessage([fauxToolCall("record_analysis", { consensus: [], contradictions: [], partialCoverage: [], uniqueInsights: [], blindSpots: [] })]),
+      fauxAssistantMessage("final from enabled judge"),
+    ]);
+    const cfg = config([{ id: "c1", model: "w1" }, { id: "c2", model: "w1" }], "j1");
+    // Two judges configured; the first is disabled, the second (j1) is enabled.
+    cfg.judges = [
+      { provider: JUDGE_PROVIDER, model: "other", enabled: false },
+      { provider: JUDGE_PROVIDER, model: "j1", enabled: true },
+    ];
+    const res = await runFusion({
+      prompt: "x",
+      config: cfg,
+      db,
+      secretsPath: join(home, "secrets.enc"),
+      keyPath: join(home, "master.key"),
+    });
+    expect(res.ok).toBe(true);
+    expect(res.answer).toBe("final from enabled judge");
+    const act = getActivity(db, res.activityId!)!;
+    expect(act.judge_model).toBe("j1"); // the enabled one, not "other"
+    wreg.unregister();
+    jreg.unregister();
+  });
+
+  it("benchmark mode forces a 10-minute candidate timeout", async () => {
+    // Spy on runWorker to capture the timeoutMs passed for candidates.
+    const seenTimeouts: number[] = [];
+    const worker = await import("../src/fusion/worker.js");
+    const orig = worker.runWorker;
+    const spy = vi.spyOn(worker, "runWorker").mockImplementation(async (input) => {
+      seenTimeouts.push(input.timeoutMs);
+      return {
+        slotId: input.slotId,
+        provider: input.provider,
+        model: input.modelId,
+        latencyMs: 1,
+        status: "ok",
+        content: "candidate answer",
+        usage: { input: 1, output: 1, cost: 0 },
+      };
+    });
+    try {
+      const cfg = config([{ id: "c1", model: "w1" }, { id: "c2", model: "w1" }], "j1");
+      cfg.settings.benchmarkMode = true;
+      // Judge still uses the normal timeout (5_000 here); only candidates get 10 min.
+      const jreg = registerFauxProvider({ provider: JUDGE_PROVIDER, api: "faux-j", models: [{ id: "j1" }] });
+      jreg.setResponses([
+        fauxAssistantMessage([fauxToolCall("record_analysis", { consensus: [], contradictions: [], partialCoverage: [], uniqueInsights: [], blindSpots: [] })]),
+        fauxAssistantMessage("final"),
+      ]);
+      const res = await runFusion({
+        prompt: "x",
+        config: cfg,
+        db,
+        secretsPath: join(home, "secrets.enc"),
+        keyPath: join(home, "master.key"),
+      });
+      expect(res.ok).toBe(true);
+      expect(seenTimeouts).toEqual([600_000, 600_000]); // both candidates got 10 min
+      jreg.unregister();
+    } finally {
+      spy.mockRestore();
+      void orig;
+    }
+  });
+
+  it("errors when no judge is enabled (config gate)", async () => {
+    const cfg = config([{ id: "c1", model: "w1" }, { id: "c2", model: "w1" }], "j1");
+    cfg.judges = [{ provider: JUDGE_PROVIDER, model: "j1", enabled: false }];
+    const res = await runFusion({
+      prompt: "x",
+      config: cfg,
+      db,
+      secretsPath: join(home, "secrets.enc"),
+      keyPath: join(home, "master.key"),
+    });
+    expect(res.ok).toBe(false);
+    expect(res.needsConfig).toBe(true);
   });
 });

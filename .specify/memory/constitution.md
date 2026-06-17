@@ -30,7 +30,7 @@ Every fusion writes **one `activities` row plus N+2 `sub_calls` rows** (one per 
 
 ### VI. Configuration Gated
 
-The `fusion` tool refuses to run until the system is configured: **≥2 candidates, a judge, and a key for every referenced provider**. On an unconfigured call, return a clear error pointing to `http://localhost:9077` (and open the browser when a display is present). Minimum **2**, maximum **5** candidates.
+The `fusion` tool refuses to run until the system is configured: **≥2 *enabled* candidates (≤5, unless Benchmark Mode), ≥1 *enabled* judge, and a key for every referenced provider**. Disabled candidates/judges are ignored (and don't need keys). On an unconfigured call, return a clear error pointing to `http://localhost:9077` (and open the browser when a display is present).
 
 ### VII. Simple & Local
 

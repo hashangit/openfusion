@@ -1,5 +1,6 @@
 // The configuration gate (Constitution VI).
-// isConfigured() = >=2 candidates + judge set + a key for every referenced provider.
+// isConfigured() = >=2 ENABLED candidates (<=5 unless benchmarkMode) +
+// >=1 ENABLED judge + a key for every referenced provider.
 import type { RawConfig } from "./schema.js";
 import { referencedProviders, loadSecrets } from "./secrets.js";
 import { paths } from "../util/paths.js";
@@ -12,15 +13,20 @@ export interface CompletenessReport {
 /** Check whether the system is ready to fuse. Pure read; no side effects. */
 export function isConfigured(config: RawConfig, secretsPath = paths.secrets(), keyPath = paths.masterKey()): CompletenessReport {
   const reasons: string[] = [];
-  const candidates = config.candidates ?? [];
-  if (candidates.length < 2) reasons.push(`need at least 2 candidates (have ${candidates.length})`);
-  if (candidates.length > 5) reasons.push(`at most 5 candidates (have ${candidates.length})`);
-  if (!config.judge) reasons.push("judge is not set");
+  const benchmark = config.settings.benchmarkMode === true;
+  const enabledCandidates = (config.candidates ?? []).filter((c) => c.enabled !== false);
+  const enabledJudges = (config.judges ?? []).filter((j) => j.enabled !== false);
+
+  if (enabledCandidates.length < 2) {
+    reasons.push(`need at least 2 enabled candidates (have ${enabledCandidates.length})`);
+  }
+  if (!benchmark && enabledCandidates.length > 5) {
+    reasons.push(`at most 5 enabled candidates (have ${enabledCandidates.length}); enable Benchmark Mode to lift the cap`);
+  }
+  if (enabledJudges.length < 1) reasons.push("need at least 1 enabled judge");
 
   const referenced = referencedProviders(config);
-  if (referenced.length === 0 && !config.judge) {
-    // nothing to check keys for yet
-  } else {
+  if (referenced.length > 0) {
     const secrets = loadSecrets(secretsPath, keyPath);
     const missing = referenced.filter((p) => !secrets.providers[p]?.apiKey);
     if (missing.length > 0) reasons.push(`missing API key for provider(s): ${missing.join(", ")}`);

@@ -66,13 +66,13 @@ describe("mcp-server: fusion tool handler", () => {
       join(home, "master.key"),
     );
     saveConfig({
-      version: 1,
+      version: 2,
       candidates: [
-        { id: "c1", provider: "faux-fusion", model: "w1" },
-        { id: "c2", provider: "faux-fusion", model: "w1" },
+        { id: "c1", provider: "faux-fusion", model: "w1", enabled: true },
+        { id: "c2", provider: "faux-fusion", model: "w1", enabled: true },
       ],
-      judge: { provider: "faux-judge", model: "j1" },
-      settings: { workerTimeoutMs: 5_000, uiPort: 9077, bind: "127.0.0.1" },
+      judges: [{ provider: "faux-judge", model: "j1", enabled: true }],
+      settings: { workerTimeoutMs: 5_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false },
     });
     registerModelDescriptor("faux-fusion", "w1", {
       id: "w1", name: "w1", api: "faux-w", provider: "faux-fusion", baseUrl: "http://localhost:0",
@@ -109,13 +109,13 @@ describe("mcp-server: fusion tool handler", () => {
       join(home, "master.key"),
     );
     saveConfig({
-      version: 1,
+      version: 2,
       candidates: [
-        { id: "c1", provider: "faux-fusion", model: "w1" },
-        { id: "c2", provider: "faux-fusion", model: "w1" },
+        { id: "c1", provider: "faux-fusion", model: "w1", enabled: true },
+        { id: "c2", provider: "faux-fusion", model: "w1", enabled: true },
       ],
-      judge: { provider: "faux-judge", model: "j1" },
-      settings: { workerTimeoutMs: 5_000, uiPort: 9077, bind: "127.0.0.1" },
+      judges: [{ provider: "faux-judge", model: "j1", enabled: true }],
+      settings: { workerTimeoutMs: 5_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false },
     });
     registerModelDescriptor("faux-fusion", "w1", {
       id: "w1", name: "w1", api: "faux-w", provider: "faux-fusion", baseUrl: "http://localhost:0",

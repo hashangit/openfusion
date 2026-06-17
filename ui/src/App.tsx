@@ -5,6 +5,7 @@ import { CandidatesPage } from "./pages/Candidates";
 import { JudgePage } from "./pages/Judge";
 import { ApiKeysPage } from "./pages/ApiKeys";
 import { DashboardPage } from "./pages/Dashboard";
+import { ErrorsPage } from "./pages/Errors";
 
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -39,6 +40,7 @@ export default function App() {
         <nav className="flex gap-1 text-sm">
           {[
             ["/dashboard", "Dashboard"],
+            ["/errors", "Errors"],
             ["/candidates", "Candidates"],
             ["/judge", "Judge"],
             ["/keys", "API Keys"],
@@ -87,6 +89,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/errors" element={<ErrorsPage />} />
           <Route path="/candidates" element={<CandidatesPage config={config} onChanged={refresh} />} />
           <Route path="/judge" element={<JudgePage config={config} onChanged={refresh} />} />
           <Route path="/keys" element={<ApiKeysPage config={config} />} />

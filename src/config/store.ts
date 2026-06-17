@@ -21,7 +21,31 @@ export function loadConfig(path = paths.config()): RawConfig {
   } catch (e) {
     throw new ConfigError("CONFIG_PARSE", `config.json is not valid JSON: ${(e as Error).message}`);
   }
-  return RawConfigSchema.parse(json);
+  return RawConfigSchema.parse(migrate(json));
+}
+
+/**
+ * v1 -> v2 migration: map the old single `judge` object to `judges: [{...judge, enabled}]`,
+ * and backfill `enabled: true` on any candidates missing it. Runs on every load;
+ * idempotent for v2 files (no `judge` key => no-op). Also tolerated: a v2 file
+ * that still has a stray `judge` key from a downgrade — ignored.
+ */
+export function migrate(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const obj = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...obj };
+  // judge (singular, v1) -> judges (plural, v2)
+  if (!Array.isArray(out.judges) && obj.judge && typeof obj.judge === "object") {
+    out.judges = [{ ...(obj.judge as object), enabled: true }];
+    delete out.judge;
+  }
+  // backfill candidate.enabled (v1 candidates had no enabled flag)
+  if (Array.isArray(out.candidates)) {
+    out.candidates = (out.candidates as Array<Record<string, unknown>>).map((c) =>
+      c && typeof c === "object" && !("enabled" in c) ? { ...c, enabled: true } : c,
+    );
+  }
+  return out;
 }
 
 /** Validate a candidate config strictly (throws on <2 candidates, unknown fields, etc.). */
@@ -43,7 +67,7 @@ export function mergeAndValidate(base: RawConfig, patch: unknown): RawConfig {
   const p = (patch ?? {}) as Record<string, unknown>;
   const merged: Record<string, unknown> = { ...base };
   if (Array.isArray(p.candidates)) merged.candidates = p.candidates;
-  if (p.judge !== undefined) merged.judge = p.judge;
+  if (Array.isArray(p.judges)) merged.judges = p.judges;
   if (p.settings && typeof p.settings === "object") {
     merged.settings = { ...(base.settings as object), ...(p.settings as object) };
   }

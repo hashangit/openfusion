@@ -30,7 +30,8 @@ export function ApiKeysPage({ config }: { config: AppConfig | null }) {
     setResults((r) => ({ ...r, [provider]: undefined as never }));
     try {
       const model =
-        config?.candidates.find((c) => c.provider === provider)?.model ?? config?.judge.model ?? "";
+        config?.candidates.find((c) => c.provider === provider)?.model ??
+        config?.judges.find((j) => j.enabled)?.model ?? "";
       const key = drafts[provider] ?? "";
       const res = await api.testProvider(provider, model, key);
       setResults((r) => ({ ...r, [provider]: res }));

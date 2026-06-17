@@ -1,33 +1,58 @@
 import { useEffect, useState } from "react";
-import { api, type AppConfig, type ProviderModel } from "../api";
+import { api, type AppConfig, type JudgeConfig, type ProviderModel } from "../api";
 
 export function JudgePage({ config, onChanged }: { config: AppConfig | null; onChanged: () => void }) {
-  const [provider, setProvider] = useState("");
-  const [model, setModel] = useState("");
+  const [judges, setJudges] = useState<JudgeConfig[]>([]);
   const [providers, setProviders] = useState<string[]>([]);
-  const [models, setModels] = useState<ProviderModel[]>([]);
+  const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (config?.judge) {
-      setProvider(config.judge.provider);
-      setModel(config.judge.model);
-    }
+    if (config) setJudges(config.judges);
   }, [config]);
   useEffect(() => {
     void api.getProviders().then((r) => setProviders(r.providers));
   }, []);
-  useEffect(() => {
-    if (!provider) return;
-    void api.getModels(provider).then((r) => setModels(r.models)).catch(() => setModels([]));
-  }, [provider]);
+
+  const loadModels = async (provider: string) => {
+    if (modelsByProvider[provider]) return;
+    try {
+      const r = await api.getModels(provider);
+      setModelsByProvider((m) => ({ ...m, [provider]: r.models }));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Exactly one enabled: turning one on makes it the sole enabled judge.
+  const toggle = (idx: number, on: boolean) => {
+    setJudges((js) => js.map((j, i) => ({ ...j, enabled: on ? i === idx : i === idx ? false : j.enabled })));
+  };
+  const update = (idx: number, patch: Partial<JudgeConfig>) => {
+    setJudges((js) => js.map((j, i) => (i === idx ? { ...j, ...patch } : j)));
+    if (patch.provider) void loadModels(patch.provider);
+  };
+  const add = () => {
+    setJudges((js) => [...js, { provider: providers[0] ?? "", model: "", enabled: false }]);
+  };
+  const remove = (idx: number) => {
+    setJudges((js) => js.filter((_, i) => i !== idx));
+  };
+
+  const enabledCount = judges.filter((j) => j.enabled).length;
+  const rangeError =
+    enabledCount === 0
+      ? "Enable exactly 1 judge (currently 0 enabled)."
+      : enabledCount > 1
+        ? `Only 1 judge can be enabled (currently ${enabledCount}).`
+        : null;
 
   const save = async () => {
     setSaving(true);
     setMsg(null);
     try {
-      await api.putConfig({ candidates: config!.candidates, judge: { provider, model } });
+      await api.putConfig({ judges, candidates: config!.candidates });
       setMsg("Saved.");
       onChanged();
     } catch (e) {
@@ -39,29 +64,74 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
 
   return (
     <section className="glass p-6">
-      <h2 className="mb-1 text-lg font-semibold">Judge model</h2>
-      <p className="mb-4 text-sm text-white/60">
-        Used for both analysis and synthesis steps (same provider/model — Constitution II).
-      </p>
+      <div className="mb-1 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Judge models</h2>
+          <p className="text-sm text-white/60">
+            Configure as many as you like; enable exactly one. The enabled judge runs both analysis and synthesis (same model — Constitution II).
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn" onClick={add}>
+            + Add
+          </button>
+          <button className="btn btn-primary" onClick={save} disabled={saving || !!rangeError}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      {rangeError && (
+        <p className="mb-3 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-200">{rangeError}</p>
+      )}
       {msg && <p className="mb-3 text-sm text-white/70">{msg}</p>}
-      <div className="flex items-center gap-3">
-        <select className="field w-44" value={provider} onChange={(e) => { setProvider(e.target.value); setModel(""); }}>
-          {providers.map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
-        <select className="field flex-1" value={model} onChange={(e) => setModel(e.target.value)}>
-          <option value="">Select a model…</option>
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.id}
-              {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
-            </option>
-          ))}
-        </select>
-        <button className="btn btn-primary" onClick={save} disabled={saving || !provider || !model}>
-          {saving ? "Saving…" : "Save"}
-        </button>
+
+      <div className="mt-4 space-y-2">
+        {judges.map((j, i) => {
+          const models = modelsByProvider[j.provider] ?? [];
+          return (
+            <div key={i} className={`glass-soft flex items-center gap-3 p-3 ${j.enabled ? "" : "opacity-50"}`}>
+              <div
+                className={`toggle ${j.enabled ? "on" : ""}`}
+                role="switch"
+                aria-checked={j.enabled}
+                title={j.enabled ? "Enabled (active judge)" : "Disabled"}
+                onClick={() => toggle(i, !j.enabled)}
+              />
+              <select
+                className="field w-44"
+                value={j.provider}
+                onChange={(e) => update(i, { provider: e.target.value, model: "" })}
+              >
+                {providers.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="field flex-1"
+                value={j.model}
+                onChange={(e) => update(i, { model: e.target.value })}
+                onFocus={() => void loadModels(j.provider)}
+              >
+                <option value="">{models.length ? "Select a model…" : "Focus to load…"}</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id}
+                    {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
+                  </option>
+                ))}
+              </select>
+              <button className="btn" onClick={() => remove(i)} disabled={judges.length <= 1}>
+                Remove
+              </button>
+            </div>
+          );
+        })}
+        {judges.length === 0 && (
+          <p className="text-sm text-white/50">No judges configured — click "+ Add".</p>
+        )}
       </div>
     </section>
   );

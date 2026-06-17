@@ -278,6 +278,14 @@ describe("fusion orchestration (T022)", () => {
     expect(act.sub_calls.filter((s) => s.role === "worker").length).toBe(3);
     expect(act.sub_calls.filter((s) => s.role === "judge_analysis").length).toBe(1);
     expect(act.sub_calls.filter((s) => s.role === "judge_synthesis").length).toBe(1);
+    // Generated text is persisted on success (migration 002).
+    expect(act.sub_calls.filter((s) => s.role === "worker").every((s) => s.generated_text === "answer A" || s.generated_text === "answer B" || s.generated_text === "answer C")).toBe(true);
+    const analysisRow = act.sub_calls.find((s) => s.role === "judge_analysis")!;
+    expect(analysisRow.analysis_json).not.toBeNull();
+    expect(JSON.parse(analysisRow.analysis_json!)).toMatchObject({ consensus: ["agreed"] });
+    expect(analysisRow.generated_text).toBeNull();
+    const synthRow = act.sub_calls.find((s) => s.role === "judge_synthesis")!;
+    expect(synthRow.generated_text).toBe("final consolidated answer");
     wreg.unregister();
     jreg.unregister();
   });

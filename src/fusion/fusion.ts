@@ -129,6 +129,8 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
       latency_ms: w.latencyMs,
       status: w.status === "ok" ? "ok" : w.status === "timeout" ? "timeout" : "error",
       error: w.error ?? null,
+      generated_text: w.content ?? null,
+      analysis_json: null,
     });
   }
 
@@ -186,6 +188,8 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
     latency_ms: analysis.latencyMs,
     status: analysis.ok ? "ok" : "error",
     error: analysis.error ?? null,
+    generated_text: null,
+    analysis_json: analysis.ok && analysis.value ? JSON.stringify(analysis.value) : null,
   });
   if (!analysis.ok) {
     return failWithJudgeError(input, activityId, startedAt, survivorCount, workerResults, "analysis", analysis.error);
@@ -206,6 +210,8 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
     latency_ms: synth.latencyMs,
     status: synth.ok ? "ok" : "error",
     error: synth.error ?? null,
+    generated_text: synth.value ?? null,
+    analysis_json: null,
   });
   if (!synth.ok || !synth.value) {
     return failWithJudgeError(input, activityId, startedAt, survivorCount, workerResults, "synthesis", synth.error);

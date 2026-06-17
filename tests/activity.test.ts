@@ -26,6 +26,38 @@ describe("db: schema", () => {
     expect(tables.map((t) => t.name).sort()).toEqual(["activities", "schema_migrations", "sub_calls"]);
   });
 
+  it("migration 002 adds generated_text + analysis_json columns and they round-trip", () => {
+    const id = recordActivity(db, { candidate_count: 2, survivor_count: 2, status: "success" });
+    recordSubCall(db, {
+      activity_id: id,
+      role: "worker",
+      provider: "openai",
+      model: "gpt-x",
+      status: "ok",
+      generated_text: "the worker's answer",
+      analysis_json: null,
+    });
+    recordSubCall(db, {
+      activity_id: id,
+      role: "judge_analysis",
+      provider: "anthropic",
+      model: "claude-x",
+      status: "ok",
+      generated_text: null,
+      analysis_json: JSON.stringify({ consensus: ["x"], contradictions: [], partialCoverage: [], uniqueInsights: [], blindSpots: [] }),
+    });
+    const got = getActivity(db, id)!;
+    const worker = got.sub_calls.find((s) => s.role === "worker")!;
+    const analysis = got.sub_calls.find((s) => s.role === "judge_analysis")!;
+    expect(worker.generated_text).toBe("the worker's answer");
+    expect(worker.analysis_json).toBeNull();
+    expect(analysis.generated_text).toBeNull();
+    expect(JSON.parse(analysis.analysis_json!)).toEqual({ consensus: ["x"], contradictions: [], partialCoverage: [], uniqueInsights: [], blindSpots: [] });
+    // migration recorded
+    const migs = db.prepare("SELECT id FROM schema_migrations").all() as { id: string }[];
+    expect(migs.map((m) => m.id)).toEqual(["001_initial", "002_add_generated_text"]);
+  });
+
   it("enforces FK cascade: deleting an activity removes its sub_calls", () => {
     const id = recordActivity(db, { status: "success", candidate_count: 2, survivor_count: 2 });
     recordSubCall(db, { activity_id: id, role: "worker", provider: "openai", model: "gpt-x", status: "ok" });

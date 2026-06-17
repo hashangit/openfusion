@@ -57,6 +57,13 @@ const MIGRATIONS: { id: string; sql: string }[] = [
       CREATE INDEX IF NOT EXISTS idx_subcalls_model    ON sub_calls(model);
     `,
   },
+  {
+    id: "002_add_generated_text",
+    sql: `
+      ALTER TABLE sub_calls ADD COLUMN generated_text TEXT;
+      ALTER TABLE sub_calls ADD COLUMN analysis_json   TEXT;
+    `,
+  },
 ];
 
 function migrate(db: DB): void {

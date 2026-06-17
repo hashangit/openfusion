@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-17
+
+### Added
+- **Generations tab** — read what each model actually produced for a given fusion. Pick an activity from a dropdown, choose Candidates or Judge view. Candidates view shows generation boxes side by side (2 by default, add more to the right with horizontal scroll), each with a per-box model dropdown, a scrollable rendered view of the generation, and per-box stats (tokens/cost/latency/status). Judge view shows the structured analysis (consensus/contradictions/partial coverage/unique insights/blind spots) plus the synthesized final answer.
+- **Generated text is now persisted** to SQLite — a new migration (`002_add_generated_text`) adds `generated_text` and `analysis_json` columns to `sub_calls`, so you can re-read any future fusion's outputs. Historical fusions (pre-0.1.2) show an honest "predates generation logging" note.
+
+### Changed
+- **Nav reorder**: Dashboard · Generations · Candidates · Judge · API Keys · Errors (Generations right after Dashboard; Errors moved to the end).
+- Lightweight markdown-ish rendering of generations (headings, bold, inline code, code fences, lists) with a copy button.
+
+## [0.1.1] - 2026-06-16
 ## [0.1.1] - 2026-06-16
 
 ### Added
@@ -58,6 +69,7 @@ The first public release. A local MCP server that brings OpenRouter's [Fusion](h
 - pnpm, TypeScript (ES2022, NodeNext, ESM), no bundler; `tsc` → `dist/`, Vite → `ui-dist/`.
 - stdout reserved for MCP JSON-RPC; all logs to stderr.
 
-[Unreleased]: https://github.com/hashangit/openfusion/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/hashangit/openfusion/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/hashangit/openfusion/releases/tag/v0.1.2
 [0.1.1]: https://github.com/hashangit/openfusion/releases/tag/v0.1.1
 [0.1.0]: https://github.com/hashangit/openfusion/releases/tag/v0.1.0

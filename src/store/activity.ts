@@ -33,6 +33,10 @@ export interface SubCallRow {
   latency_ms?: number;
   status: "ok" | "timeout" | "error";
   error?: string | null;
+  /** The generated text (worker output / judge synthesized answer). null for failures or judge_analysis. */
+  generated_text?: string | null;
+  /** Structured analysis (judge_analysis only), JSON-stringified. */
+  analysis_json?: string | null;
 }
 
 export interface ActivityWithSubCalls extends ActivityRow {
@@ -76,9 +80,11 @@ const insertSubCall = (db: DB) =>
   db.prepare(`
     INSERT INTO sub_calls
       (id, activity_id, created_at, role, slot_id, provider, model,
-       input_tokens, output_tokens, cost, latency_ms, status, error)
+       input_tokens, output_tokens, cost, latency_ms, status, error,
+       generated_text, analysis_json)
     VALUES (@id, @activity_id, @created_at, @role, @slot_id, @provider, @model,
-       @input_tokens, @output_tokens, @cost, @latency_ms, @status, @error)
+       @input_tokens, @output_tokens, @cost, @latency_ms, @status, @error,
+       @generated_text, @analysis_json)
   `);
 
 export function recordSubCall(db: DB, row: SubCallRow): string {
@@ -97,6 +103,8 @@ export function recordSubCall(db: DB, row: SubCallRow): string {
     latency_ms: row.latency_ms ?? 0,
     status: row.status,
     error: row.error ?? null,
+    generated_text: row.generated_text ?? null,
+    analysis_json: row.analysis_json ?? null,
   });
   return id;
 }

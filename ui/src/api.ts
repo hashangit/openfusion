@@ -46,6 +46,10 @@ export interface SubCall {
   latency_ms: number;
   status: "ok" | "timeout" | "error";
   error?: string | null;
+  /** Generated text (worker output / judge synthesized answer). null for failures or analysis step. */
+  generated_text?: string | null;
+  /** Structured analysis (judge_analysis only), as a JSON string. */
+  analysis_json?: string | null;
 }
 export interface Activity {
   id: string;

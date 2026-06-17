@@ -14,6 +14,7 @@ import { testRouter } from "./api/test.js";
 import { statsRouter } from "./api/stats.js";
 import { activityRouter } from "./api/activity.js";
 import { statusRouter } from "./api/status.js";
+import { personasRouter } from "./api/personas.js";
 import { loadConfig } from "../config/store.js";
 import { isConfigured } from "../config/completeness.js";
 import { VERSION } from "../util/version.js";
@@ -47,6 +48,7 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<{ ap
   app.use("/api/stats", statsRouter(db));
   app.use("/api/activity", activityRouter(db));
   app.use("/api/status", statusRouter());
+  app.use("/api/personas", personasRouter());
   // /api/health is a liveness ping (kept stable for back-compat) but now carries
   // version + configured so a single call tells you both "is it up" and "is it ready".
   app.get("/api/health", (_req, res) => {

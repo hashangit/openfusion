@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hashangit/openfusion/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.2.0-4cd0b0.svg" /></a>
+  <a href="https://github.com/hashangit/openfusion/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.2.1-4cd0b0.svg" /></a>
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <a href="https://nodejs.org"><img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A522-3498db.svg" /></a>
   <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.7-3178c6.svg" /></a>

@@ -4,7 +4,6 @@
 import { Type, type Tool, type Context } from "@earendil-works/pi-ai";
 import { runComplete, extractText, extractToolCall, totalCost, type AnyModel } from "../providers/pi-ai-bridge.js";
 import { withRetryTimeout } from "../util/timeout.js";
-import { ANALYSIS_PROMPT, SYNTHESIS_PROMPT } from "./prompts.js";
 
 export interface AnalysisShape {
   consensus: string[];
@@ -51,9 +50,10 @@ export async function runAnalysis(
   candidates: CandidateView[],
   apiKey: string,
   timeoutMs: number,
+  analysisPrompt: string,
 ): Promise<JudgeStepResult<AnalysisShape>> {
   const ctx: Context = {
-    systemPrompt: ANALYSIS_PROMPT,
+    systemPrompt: analysisPrompt,
     messages: [{ role: "user", content: analysisUserContent(prompt, candidates), timestamp: Date.now() }],
     tools: [analysisTool],
   };
@@ -93,9 +93,10 @@ export async function runSynthesis(
   analysis: AnalysisShape,
   apiKey: string,
   timeoutMs: number,
+  synthesisPrompt: string,
 ): Promise<JudgeStepResult<string>> {
   const ctx: Context = {
-    systemPrompt: SYNTHESIS_PROMPT,
+    systemPrompt: synthesisPrompt,
     messages: [{ role: "user", content: synthesisUserContent(prompt, candidates, analysis), timestamp: Date.now() }],
   };
   const startedAt = Date.now();

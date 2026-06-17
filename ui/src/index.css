@@ -63,7 +63,9 @@ button.btn-primary:hover:not(:disabled) {
   filter: brightness(1.1);
 }
 input.field,
-select.field {
+input.field,
+select.field,
+textarea.field {
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 0.5rem;
@@ -73,7 +75,8 @@ select.field {
   outline: none;
 }
 input.field:focus,
-select.field:focus {
+select.field:focus,
+textarea.field:focus {
   border-color: rgba(76, 208, 176, 0.6);
 }
 

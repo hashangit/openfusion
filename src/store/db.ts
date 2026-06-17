@@ -84,6 +84,12 @@ const MIGRATIONS: { id: string; sql: string }[] = [
       ALTER TABLE sub_calls ADD COLUMN analysis_json   TEXT;
     `,
   },
+  {
+    id: "003_add_persona",
+    sql: `
+      ALTER TABLE activities ADD COLUMN persona TEXT;
+    `,
+  },
 ];
 
 function migrate(db: DB): void {

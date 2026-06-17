@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-18
+
+### Added
+- **Personas** — named bundles of the three system prompts (worker + analysis + synthesis) tailored to the task. Ships with four defaults: **Generalist**, **QA / Code Reviewer**, **Researcher**, **Project Manager / Strategist**. Each gets specialized role framing for the candidates and matching emphasis in the judge steps.
+- **Personas tab** — a full editor: pick a persona, edit all three prompts in textareas, set the active one, duplicate, reset a builtin to its shipped default, or create/delete your own.
+- **Per-fusion persona override** — the `fusion` tool now accepts an optional `persona` (id or name, e.g. `qa`, `researcher`) so an agent can match the persona to the task on each call. Defaults to the active persona.
+- **`GET/POST/PUT/DELETE /api/personas`** — full persona CRUD.
+
+### Changed
+- **Config schema v2 → v3** with automatic migration: injects the builtin personas and sets `activePersona: "generalist"` on load (a notice prints if a v2 file is upgraded). Existing config upgrades transparently.
+- The default **Generalist** prompts are sharper without bloat: workers now "show reasoning briefly so the judge can weigh it"; synthesis now "corrects wrong consensus instead of rubber-stamping it."
+- **`activities.persona`** column (migration `003_add_persona`) — each fusion logs which persona it used (shown in Generations/Errors views; null for pre-0.2.1 fusions).
+- The three system prompts are no longer hardcoded — they're threaded from the resolved persona through the worker and both judge steps. The standalone `prompts.ts` is removed.
+
+## [0.2.0] - 2026-06-18
 ## [0.2.0] - 2026-06-18
 
 ### Added
@@ -87,7 +102,8 @@ The first public release. A local MCP server that brings OpenRouter's [Fusion](h
 - pnpm, TypeScript (ES2022, NodeNext, ESM), no bundler; `tsc` → `dist/`, Vite → `ui-dist/`.
 - stdout reserved for MCP JSON-RPC; all logs to stderr.
 
-[Unreleased]: https://github.com/hashangit/openfusion/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/hashangit/openfusion/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/hashangit/openfusion/releases/tag/v0.2.1
 [0.2.0]: https://github.com/hashangit/openfusion/releases/tag/v0.2.0
 [0.1.2]: https://github.com/hashangit/openfusion/releases/tag/v0.1.2
 [0.1.1]: https://github.com/hashangit/openfusion/releases/tag/v0.1.1

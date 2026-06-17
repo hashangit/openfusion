@@ -17,6 +17,8 @@ export interface ActivityRow {
   total_latency_ms?: number;
   status: string;
   error?: string | null;
+  /** Persona id/name used for this fusion (migration 003; null for pre-0.2.1 fusions). */
+  persona?: string | null;
 }
 
 export interface SubCallRow {
@@ -49,10 +51,10 @@ const insertActivity = (db: DB) =>
     INSERT INTO activities
       (id, created_at, prompt_excerpt, has_context, candidate_count, survivor_count,
        judge_provider, judge_model, total_input_tokens, total_output_tokens,
-       total_cost, total_latency_ms, status, error)
+       total_cost, total_latency_ms, status, error, persona)
     VALUES (@id, @created_at, @prompt_excerpt, @has_context, @candidate_count, @survivor_count,
        @judge_provider, @judge_model, @total_input_tokens, @total_output_tokens,
-       @total_cost, @total_latency_ms, @status, @error)
+       @total_cost, @total_latency_ms, @status, @error, @persona)
   `);
 
 export function recordActivity(db: DB, row: ActivityRow): string {
@@ -72,6 +74,7 @@ export function recordActivity(db: DB, row: ActivityRow): string {
     total_latency_ms: row.total_latency_ms ?? 0,
     status: row.status,
     error: row.error ?? null,
+    persona: row.persona ?? null,
   });
   return id;
 }

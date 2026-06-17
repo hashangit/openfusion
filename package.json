@@ -1,6 +1,6 @@
 {
   "name": "openfusion-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Local MCP server implementing OpenRouter's Fusion panel architecture: fan-out + two-step judge.",
   "license": "MIT",
   "author": "Hashan Wickramasinghe",

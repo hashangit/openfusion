@@ -3,6 +3,7 @@
 import { existsSync, readFileSync, writeFileSync, renameSync, copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { AppConfigSchema, RawConfigSchema, CONFIG_VERSION, type AppConfig, type RawConfig } from "./schema.js";
+import { BUILTIN_PERSONAS } from "../fusion/personas.js";
 import { ensureHome, paths } from "../util/paths.js";
 
 /** Build an empty RawConfig using schema defaults. */
@@ -25,16 +26,17 @@ export function loadConfig(path = paths.config()): RawConfig {
 }
 
 /**
- * v1 -> v2 migration: map the old single `judge` object to `judges: [{...judge, enabled}]`,
- * and backfill `enabled: true` on any candidates missing it. Runs on every load;
- * idempotent for v2 files (no `judge` key => no-op). Also tolerated: a v2 file
- * that still has a stray `judge` key from a downgrade — ignored.
+ * Migrations run on every load; idempotent for current-version files.
+ *  - v1 -> v2: single `judge` -> `judges[]`; backfill candidate.enabled.
+ *  - v2 -> v3: inject builtin personas if `personas` absent/empty; set activePersona.
+ * A file with a stray `judge` key from a downgrade is tolerated (ignored).
  */
 export function migrate(raw: unknown): unknown {
   if (!raw || typeof raw !== "object") return raw;
   const obj = raw as Record<string, unknown>;
   const out: Record<string, unknown> = { ...obj };
   let migrated = false;
+  let migratedTo = 0;
   // judge (singular, v1) -> judges (plural, v2)
   if (!Array.isArray(out.judges) && obj.judge && typeof obj.judge === "object") {
     out.judges = [{ ...(obj.judge as object), enabled: true }];
@@ -55,9 +57,28 @@ export function migrate(raw: unknown): unknown {
     if (backfilled) migrated = true;
     out.candidates = after;
   }
+  if (migrated) migratedTo = Math.max(migratedTo, 2);
+
+  // v2 -> v3: ensure personas present (inject builtins) + activePersona set.
+  if (!Array.isArray(out.personas) || (out.personas as unknown[]).length === 0) {
+    out.personas = BUILTIN_PERSONAS.map((p) => ({ ...p }));
+    migrated = true;
+  }
+  const settings = (out.settings ?? {}) as Record<string, unknown>;
+  if (!settings.activePersona) {
+    settings.activePersona = "generalist";
+    out.settings = settings;
+    migrated = true;
+  }
+  if (migrated && migratedTo < 3) migratedTo = 3;
+
   if (migrated) {
-    out.version = 2;
-    console.error("OpenFusion: config upgraded from v1 → v2 (judge→judges, enabled flags). Re-save via the dashboard to persist.");
+    out.version = migratedTo;
+    const note =
+      migratedTo === 3
+        ? "config upgraded (personas added + activePersona set)"
+        : "config upgraded from v1 → v2 (judge→judges, enabled flags)";
+    console.error(`OpenFusion: ${note}. Re-save via the dashboard to persist.`);
   }
   return out;
 }
@@ -82,6 +103,7 @@ export function mergeAndValidate(base: RawConfig, patch: unknown): RawConfig {
   const merged: Record<string, unknown> = { ...base };
   if (Array.isArray(p.candidates)) merged.candidates = p.candidates;
   if (Array.isArray(p.judges)) merged.judges = p.judges;
+  if (Array.isArray(p.personas)) merged.personas = p.personas;
   if (p.settings && typeof p.settings === "object") {
     merged.settings = { ...(base.settings as object), ...(p.settings as object) };
   }

@@ -27,6 +27,12 @@ export const fusionInputSchema = {
     .describe(
       "Optional background context, prior reasoning, or tool results the client has already gathered. Included with the prompt for each candidate. OpenFusion does not gather information itself.",
     ),
+  persona: z
+    .string()
+    .optional()
+    .describe(
+      "Persona id or name to use for this fusion (e.g. 'qa', 'researcher', 'pm'). A persona bundles the worker + analysis + synthesis system prompts. Defaults to the active persona set in the dashboard ('generalist' unless changed).",
+    ),
 };
 
 /**
@@ -41,7 +47,7 @@ export interface ToolExtra {
 
 /** The fusion tool handler, extracted so tests can call it with a mocked extra. */
 export async function fusionToolHandler(
-  args: { prompt: string; context?: string },
+  args: { prompt: string; context?: string; persona?: string },
   extra: ToolExtra,
   deps: { db: DB; openBrowserOnNeedsConfig?: boolean },
 ): Promise<{ isError?: boolean; content: { type: "text"; text: string }[] }> {
@@ -50,6 +56,7 @@ export async function fusionToolHandler(
   const result = await runFusion({
     prompt: args.prompt,
     context: args.context,
+    persona: args.persona,
     config,
     db: deps.db,
     onProgress: report,
@@ -79,7 +86,7 @@ export async function createMcpServer(options: McpServerOptions = {}): Promise<M
   // Tool: fusion — fan-out + two-step judge.
   server.tool(
     "fusion",
-    "Fan a prompt out to 2-5 candidate models, run a two-step judge (analysis then synthesis), and return one consolidated answer. Slower and costlier than a single model call (2-3x). Use for complex reasoning, deep research, cross-model verification, or high-stakes answers where consensus adds value. Do NOT use for routine lookups, single-turn Q&A, or trivial tasks. OpenFusion does not call tools — provide the prompt and any gathered context yourself.",
+    "Fan a prompt out to 2-5 candidate models, run a two-step judge (analysis then synthesis), and return one consolidated answer. Slower and costlier than a single model call (2-3x). Use for complex reasoning, deep research, cross-model verification, or high-stakes answers where consensus adds value. Do NOT use for routine lookups, single-turn Q&A, or trivial tasks. OpenFusion does not call tools — provide the prompt and any gathered context yourself. Optional 'persona' (e.g. 'qa', 'researcher', 'pm') tailors the worker + judge prompts to the task; defaults to the active persona in the dashboard.",
     fusionInputSchema,
     async (args, extra) => fusionToolHandler(args, extra as unknown as ToolExtra, { db, openBrowserOnNeedsConfig: options.openBrowserOnNeedsConfig }),
   );

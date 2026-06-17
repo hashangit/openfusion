@@ -6,6 +6,7 @@ import { JudgePage } from "./pages/Judge";
 import { ApiKeysPage } from "./pages/ApiKeys";
 import { DashboardPage } from "./pages/Dashboard";
 import { GenerationsPage } from "./pages/Generations";
+import { PersonasPage } from "./pages/Personas";
 import { ErrorsPage } from "./pages/Errors";
 
 export default function App() {
@@ -44,6 +45,7 @@ export default function App() {
             ["/generations", "Generations"],
             ["/candidates", "Candidates"],
             ["/judge", "Judge"],
+            ["/personas", "Personas"],
             ["/keys", "API Keys"],
             ["/errors", "Errors"],
           ].map(([to, label]) => (
@@ -95,6 +97,7 @@ export default function App() {
           <Route path="/errors" element={<ErrorsPage />} />
           <Route path="/candidates" element={<CandidatesPage config={config} onChanged={refresh} />} />
           <Route path="/judge" element={<JudgePage config={config} onChanged={refresh} />} />
+          <Route path="/personas" element={<PersonasPage />} />
           <Route path="/keys" element={<ApiKeysPage config={config} />} />
         </Routes>
       </main>

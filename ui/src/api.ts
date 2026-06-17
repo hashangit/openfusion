@@ -14,8 +14,18 @@ export interface AppConfig {
   version: number;
   candidates: CandidateSlot[];
   judges: JudgeConfig[];
-  settings: { workerTimeoutMs: number; uiPort: number; bind: string; benchmarkMode: boolean };
+  settings: { workerTimeoutMs: number; uiPort: number; bind: string; benchmarkMode: boolean; activePersona: string };
   configured: boolean;
+}
+
+export interface Persona {
+  id: string;
+  name: string;
+  description?: string;
+  builtin?: boolean;
+  workerPrompt: string;
+  analysisPrompt: string;
+  synthesisPrompt: string;
 }
 export interface SecretsView {
   providers: Record<string, { present: boolean; hint: string | null }>;
@@ -121,6 +131,12 @@ export const api = {
     );
   },
   getActivityDetail: (id: string) => getJSON<Activity>(`/api/activity/${id}`),
+  getPersonas: () => getJSON<{ personas: Persona[]; activePersona: string }>("/api/personas"),
+  createPersona: (p: Omit<Persona, "id">) => sendJSON<Persona>("POST", "/api/personas", p),
+  updatePersona: (id: string, patch: Partial<Persona> | { reset: true }) =>
+    sendJSON<Persona>("PUT", `/api/personas/${encodeURIComponent(id)}`, patch),
+  deletePersona: (id: string) =>
+    fetch(`/api/personas/${encodeURIComponent(id)}`, { method: "DELETE" }).then((r) => r.ok),
   /** Failed/partial activities only (client-side filter — volume is low). */
   getErrors: async (opts: { limit?: number; offset?: number } = {}): Promise<{ total: number; items: Activity[] }> => {
     const r = await api.getActivity({ limit: opts.limit ?? 100, offset: opts.offset ?? 0 });

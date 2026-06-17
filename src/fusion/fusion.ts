@@ -7,6 +7,7 @@ import { isConfigured } from "../config/completeness.js";
 import { getKey } from "../config/secrets.js";
 import { resolveModel, type AnyModel } from "../providers/pi-ai-bridge.js";
 import { runWorker, type WorkerResult } from "./worker.js";
+import { resolvePersona } from "./personas.js";
 import { runAnalysis, runSynthesis, type CandidateView } from "./judge.js";
 import { paths } from "../util/paths.js";
 import type { DB } from "../store/db.js";
@@ -20,6 +21,8 @@ export interface FusionInput {
   prompt: string;
   context?: string;
   config: RawConfig;
+  /** Optional per-call persona override (id or name); defaults to the active persona. */
+  persona?: string;
   /** Injected so tests can swap a temp DB. */
   db: DB;
   /** Injected so tests can point secrets/master.key elsewhere. */
@@ -63,6 +66,18 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   const candidates = (input.config.candidates ?? []).filter((c) => c.enabled !== false);
   const judge = (input.config.judges ?? []).find((j) => j.enabled !== false);
   const benchmark = input.config.settings.benchmarkMode === true;
+  // Resolve the persona: per-call override -> active persona -> generalist default.
+  // Falls back gracefully (never fails) — a missing persona always yields real prompts.
+  const persona = resolvePersona({
+    override: input.persona,
+    personas: input.config.personas ?? [],
+    activeId: input.config.settings.activePersona,
+  });
+  const personaPrompts = {
+    worker: persona.workerPrompt,
+    analysis: persona.analysisPrompt,
+    synthesis: persona.synthesisPrompt,
+  };
   // Benchmark mode forces a 10-min candidate timeout; the judge always uses the
   // user's configured workerTimeoutMs (a judge is one call, not benchmarked).
   const candidateTimeoutMs = benchmark ? 600_000 : input.config.settings.workerTimeoutMs;
@@ -95,6 +110,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
     total_output_tokens: 0,
     total_cost: 0,
     total_latency_ms: 0,
+    persona: persona.id,
     status: "error", // pessimistic default; updated on success/partial
     error: "in-progress",
   });
@@ -111,6 +127,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
         context: input.context,
         apiKey: getKey(c.provider, secretsPath, keyPath) ?? "",
         timeoutMs: candidateTimeoutMs,
+        workerPrompt: personaPrompts.worker,
       }),
     ),
   );
@@ -176,7 +193,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
     return failWithJudgeError(input, activityId, startedAt, survivorCount, workerResults, "analysis", `could not resolve judge model ${judge.provider}/${judge.model}`);
   }
 
-  const analysis = await runAnalysis(judgeModel, input.prompt, candidateViews, judgeApiKey, judgeTimeoutMs);
+  const analysis = await runAnalysis(judgeModel, input.prompt, candidateViews, judgeApiKey, judgeTimeoutMs, personaPrompts.analysis);
   recordSubCall(input.db, {
     activity_id: activityId,
     role: "judge_analysis",
@@ -198,7 +215,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   report(2, 3, "Analysis complete; synthesizing…");
 
   // --- Judge step 2: synthesis ---
-  const synth = await runSynthesis(judgeModel, input.prompt, candidateViews, analysis.value!, judgeApiKey, judgeTimeoutMs);
+  const synth = await runSynthesis(judgeModel, input.prompt, candidateViews, analysis.value!, judgeApiKey, judgeTimeoutMs, personaPrompts.synthesis);
   recordSubCall(input.db, {
     activity_id: activityId,
     role: "judge_synthesis",

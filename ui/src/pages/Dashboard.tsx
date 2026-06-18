@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -32,6 +32,20 @@ export function DashboardPage() {
   };
   useEffect(() => {
     void refresh();
+  }, []);
+
+  // Re-fetch when the Dashboard tab becomes visible again, so charts reflect fusions
+  // that landed while the user was away. Without this the charts are frozen at the
+  // last page-load / manual-Refresh snapshot — the only other refresh trigger.
+  // Stored in a ref so the listener (bound once) always invokes the latest refresh().
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshRef.current();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   const k = stats?.kpis;

@@ -16,6 +16,7 @@ import { saveSecrets } from "../src/config/secrets.js";
 import { generateMasterKey } from "../src/config/crypto.js";
 import { registerModelDescriptor, clearModelDescriptors } from "../src/providers/pi-ai-bridge.js";
 import { registerFauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { drainTasks } from "../src/fusion/task-runner.js";
 import type { DB } from "../src/store/db.js";
 
 // Per research.md R-010 / T002 probe: the client MUST advertise this capability or the
@@ -31,7 +32,11 @@ beforeEach(() => {
   db = openDatabase(join(home, "test.db"));
   writeFileSync(join(home, "master.key"), generateMasterKey(), { mode: 0o600 });
 });
-afterEach(() => {
+afterEach(async () => {
+  // Drain in-flight detached fusions BEFORE closing the DB, so their final writes
+  // (storeTaskResult, updateActivity) don't race with teardown. Per consultation #2 —
+  // avoids the "database connection is not open" / "Not connected" noise cleanly.
+  await drainTasks();
   db.close();
   rmSync(home, { recursive: true, force: true });
   clearModelDescriptors();
@@ -72,7 +77,9 @@ function configureFaux(opts?: { workerResponses?: string[]; judgeFinal?: string 
   return { wreg, jreg };
 }
 
-/** Boot the real MCP server + a tasks-capable client over linked in-memory transports. */
+/** Boot the real MCP server + a tasks-capable client over linked in-memory transports.
+ *  The returned `close` drains in-flight tasks BEFORE closing the transport, so detached
+ *  writes don't race against teardown (consultation #2). */
 async function boot() {
   const server = await createMcpServer({ db, openBrowserOnNeedsConfig: false });
   const [cT, sT] = InMemoryTransport.createLinkedPair();
@@ -82,7 +89,12 @@ async function boot() {
     { capabilities: TASKS_CLIENT_CAP },
   );
   await client.connect(cT);
-  return { server, client, close: () => { client.close(); server.close(); } };
+  const close = async () => {
+    await drainTasks(); // let detached fusions finalize while the transport is still up
+    client.close();
+    server.close();
+  };
+  return { server, client, close };
 }
 
 describe("US1 — task path: CreateTaskResult + tasks/result (quickstart T1)", () => {
@@ -103,7 +115,7 @@ describe("US1 — task path: CreateTaskResult + tasks/result (quickstart T1)", (
       // Synchronous return: fusion takes >50ms even with faux providers (fan-out + 2 judge calls).
       expect(elapsed).toBeLessThan(50);
     } finally {
-      close();
+      await close();
       wreg.unregister();
       jreg.unregister();
     }
@@ -144,7 +156,7 @@ describe("US1 — task path: CreateTaskResult + tasks/result (quickstart T1)", (
       const subCount = (db.prepare("SELECT COUNT(*) AS n FROM sub_calls").get() as { n: number }).n;
       expect(subCount).toBe(4); // 2 workers + judge_analysis + judge_synthesis
     } finally {
-      close();
+      await close();
       wreg.unregister();
       jreg.unregister();
     }

@@ -68,13 +68,43 @@ export async function startDetachedFusion(
   const task = await extra.taskStore.createTask({ ttl: TASK_TTL_MS });
   taskActivity.set(task.taskId, activityId);
 
-  // Fire-and-forget. The IIFE catches every failure path so the task always reaches a
-  // terminal state (FR-009 — no hangs).
-  void runDetached(args, task.taskId, activityId, extra.taskStore).catch((err: unknown) => {
-    console.error(`[task-runner] detached fusion ${task.taskId} threw unexpectedly:`, err);
-  });
-
+  // Fire-and-forget, but tracked so tests/teardown can drain (drainTasks) and so the
+  // outer catch still transitions the task to a terminal state if runDetached throws
+  // BEFORE its inner try block (e.g. during setup). Without this outer storeTaskResult,
+  // such a throw would maroon the task in 'working' until TTL expiry (FR-009 violation).
+  const p = runDetached(args, task.taskId, activityId, extra.taskStore)
+    .catch(async (err: unknown) => {
+      console.error(`[task-runner] detached fusion ${task.taskId} threw before terminal:`, err);
+      // Best-effort: force the task to 'failed' so it can never hang in 'working'.
+      try {
+        await extra.taskStore.storeTaskResult(
+          task.taskId,
+          "failed",
+          { isError: true, content: [{ type: "text", text: `Internal error: ${errorMessage(err)}` }] },
+        );
+      } catch (storeErr: unknown) {
+        console.error(`[task-runner] failed to store error result for ${task.taskId}:`, storeErr);
+      }
+    })
+    .finally(() => {
+      activeTasks.delete(p);
+      taskActivity.delete(task.taskId);
+    });
+  activeTasks.add(p);
+  void p;
   return task;
+}
+
+/**
+ * In-flight detached fusions, for deterministic test teardown and a future SIGTERM drain.
+ * Added per OpenFusion consultation finding #2 — avoids the test teardown race cleanly
+ * (await this before closing the DB) without polling.
+ */
+const activeTasks = new Set<Promise<void>>();
+
+/** Resolve once all in-flight detached fusions have settled (terminal or rejected). */
+export async function drainTasks(): Promise<void> {
+  await Promise.allSettled([...activeTasks]);
 }
 
 const TASK_TTL_MS = 10 * 60_000; // 10 min — well above any realistic fusion duration.
@@ -103,9 +133,9 @@ async function runDetached(
     // defend against an unexpected throw so the task can't hang in `working`.
     console.error(`[task-runner] runFusion threw for task ${taskId}:`, err);
     result = { ok: false, error: errorMessage(err), status: "error" };
-  } finally {
-    taskActivity.delete(taskId);
   }
+  // NOTE: taskActivity cleanup is owned by the outer finally in startDetachedFusion,
+  // so it also runs if we throw before reaching here (consultation finding #2).
 
   if (result.ok) {
     await taskStore.storeTaskResult(taskId, "completed", {

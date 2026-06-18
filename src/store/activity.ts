@@ -79,6 +79,29 @@ export function recordActivity(db: DB, row: ActivityRow): string {
   return id;
 }
 
+/**
+ * Allocate an activity row up front with status='running', before the fusion work begins.
+ * Used by the task path so a durable record exists before `CreateTaskResult` is returned
+ * (FR-003). Counts/tokens/latency are zeroed here; the terminal `updateActivity` call at
+ * the end of `runFusion` fills them in.
+ */
+export function allocateActivity(
+  db: DB,
+  row: Pick<ActivityRow, "candidate_count" | "survivor_count"> &
+    Partial<Pick<ActivityRow, "prompt_excerpt" | "has_context" | "persona" | "id" | "created_at">>,
+): string {
+  return recordActivity(db, {
+    candidate_count: row.candidate_count,
+    survivor_count: row.survivor_count,
+    prompt_excerpt: row.prompt_excerpt,
+    has_context: row.has_context ?? 0,
+    persona: row.persona ?? null,
+    id: row.id,
+    created_at: row.created_at,
+    status: "running",
+  });
+}
+
 const insertSubCall = (db: DB) =>
   db.prepare(`
     INSERT INTO sub_calls
@@ -115,6 +138,7 @@ export function recordSubCall(db: DB, row: SubCallRow): string {
 /** Update aggregate/status fields on an existing activity row (used when finalizing a fusion). */
 export function updateActivity(db: DB, id: string, patch: Partial<ActivityRow>): void {
   const allowed: (keyof ActivityRow)[] = [
+    "candidate_count",
     "survivor_count",
     "total_input_tokens",
     "total_output_tokens",

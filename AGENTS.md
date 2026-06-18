@@ -121,5 +121,5 @@ Both judge steps use the **same** provider/model combo.
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/004-fusion-mcp-server/plan.md
+at specs/005-mcp-tasks-sep/plan.md
 <!-- SPECKIT END -->

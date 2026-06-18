@@ -30,6 +30,13 @@ export interface FusionInput {
   keyPath?: string;
   /** Optional progress callback (MCP tool wires it to notifications/progress). */
   onProgress?: ProgressFn;
+  /**
+   * Pre-allocated activity row id (task path). When provided, runFusion skips its own
+   * activity insert and writes sub_calls / terminal updates against this id. When absent,
+   * runFusion allocates the row itself (legacy blocking behavior). Either way the row
+   * exists before fan-out, so the FK on sub_calls is satisfied.
+   */
+  activityId?: string;
 }
 
 export interface FusionResult {
@@ -91,29 +98,39 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
       status: "error",
     };
   }
-  const activityId = randomUUID();
+  const activityId = input.activityId ?? randomUUID();
   const startedAt = Date.now();
 
   report(0, 3, `Fanning out to ${candidates.length} models…`);
 
   // Insert the activity row up-front so sub_calls can reference it (FK). It is finalized
   // (status + aggregates) once the fusion resolves — success, partial, or error.
-  recordActivity(input.db, {
-    id: activityId,
-    prompt_excerpt: excerpt(input.prompt),
-    has_context: input.context ? 1 : 0,
-    candidate_count: candidates.length,
-    survivor_count: 0,
-    judge_provider: judge.provider,
-    judge_model: judge.model,
-    total_input_tokens: 0,
-    total_output_tokens: 0,
-    total_cost: 0,
-    total_latency_ms: 0,
-    persona: persona.id,
-    status: "error", // pessimistic default; updated on success/partial
-    error: "in-progress",
-  });
+  // When input.activityId is provided (task path), the caller already allocated a
+  // 'running' row, so we must NOT re-insert — only the terminal updateActivity applies.
+  if (!input.activityId) {
+    recordActivity(input.db, {
+      id: activityId,
+      prompt_excerpt: excerpt(input.prompt),
+      has_context: input.context ? 1 : 0,
+      candidate_count: candidates.length,
+      survivor_count: 0,
+      judge_provider: judge.provider,
+      judge_model: judge.model,
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      total_cost: 0,
+      total_latency_ms: 0,
+      persona: persona.id,
+      status: "error", // pessimistic default; updated on success/partial
+      error: "in-progress",
+    });
+  } else {
+    // Pre-allocated row exists (task path); align candidate_count + judge fields so the
+    // dashboard shows correct metadata even if fan-out never completes.
+    updateActivity(input.db, activityId, {
+      candidate_count: candidates.length,
+    });
+  }
 
   // --- Fan-out (Constitution III): parallel, per-worker timeout, Promise.allSettled ---
   const workerResults = await Promise.all(

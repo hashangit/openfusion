@@ -1,8 +1,15 @@
 // MCP server: registers the `fusion` + `open_dashboard` tools over stdio.
 // stdout is the JSON-RPC channel — ALL logs go to stderr (AGENTS.md conventions).
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { InMemoryTaskStore } from "@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js";
+import type {
+  CreateTaskRequestHandlerExtra,
+  TaskRequestHandlerExtra,
+  ToolTaskHandler,
+} from "@modelcontextprotocol/sdk/experimental/tasks/interfaces.js";
 import { z } from "zod";
 import { runFusion } from "../fusion/fusion.js";
+import { startDetachedFusion, type TaskHandlerExtra } from "../fusion/task-runner.js";
 import { loadConfig, emptyConfig } from "../config/store.js";
 import { openDatabase } from "../store/db.js";
 import { paths, ensureHome } from "../util/paths.js";
@@ -10,6 +17,11 @@ import { VERSION } from "../util/version.js";
 import type { DB } from "../store/db.js";
 
 const UI_URL = "http://localhost:9077";
+
+// Feature 005 (research.md R-010): the server MUST declare this capability in its options
+// or task-augmented `tools/call` requests fail with "Server does not support task creation".
+// The capability value is an object ({}), NOT boolean true — see R-010 finding #2.
+const TASKS_SERVER_CAP = { tasks: { requests: { tools: { call: {} } } } } as const;
 
 export interface McpServerOptions {
   /** Override the DB (tests pass a temp one). Defaults to the on-disk OpenFusion DB. */
@@ -79,16 +91,53 @@ export async function openDashboardToolHandler(): Promise<{ content: { type: "te
 
 /** Build and connect an McpServer with the fusion + open_dashboard tools. */
 export async function createMcpServer(options: McpServerOptions = {}): Promise<McpServer> {
-  const server = new McpServer({ name: "openfusion", version: VERSION });
+  // Feature 005: taskStore + capabilities on the constructor (research.md R-010).
+  // taskStore is the InMemoryTaskStore backing tasks/get + tasks/result.
+  const server = new McpServer(
+    { name: "openfusion", version: VERSION },
+    { taskStore: new InMemoryTaskStore(), capabilities: TASKS_SERVER_CAP },
+  );
   if (!options.db) ensureHome(); // make sure ~/.openfusion exists before opening the DB
   const db = options.db ?? openDatabase(paths.db());
 
-  // Tool: fusion — fan-out + two-step judge.
-  server.tool(
+  // Tool: fusion — task-capable (SEP-1686). taskSupport:'optional' means:
+  //   - Tasks-aware client (sends `task` param) → CreateTaskResult returned synchronously,
+  //     fusion runs detached, client fetches via tasks/result. No client-side timeout.
+  //   - Non-Tasks client (no `task` param) → SDK auto-polls the same createTask handler
+  //     and returns the final CallToolResult (handleAutomaticTaskPolling). Blocking path.
+  server.experimental.tasks.registerToolTask(
     "fusion",
-    "Fan a prompt out to 2-5 candidate models, run a two-step judge (analysis then synthesis), and return one consolidated answer. Slower and costlier than a single model call (2-3x). Use for complex reasoning, deep research, cross-model verification, or high-stakes answers where consensus adds value. Do NOT use for routine lookups, single-turn Q&A, or trivial tasks. OpenFusion does not call tools — provide the prompt and any gathered context yourself. Optional 'persona' (e.g. 'qa', 'researcher', 'pm') tailors the worker + judge prompts to the task; defaults to the active persona in the dashboard.",
-    fusionInputSchema,
-    async (args, extra) => fusionToolHandler(args, extra as unknown as ToolExtra, { db, openBrowserOnNeedsConfig: options.openBrowserOnNeedsConfig }),
+    {
+      description:
+        "Fan a prompt out to 2-5 candidate models, run a two-step judge (analysis then synthesis), and return one consolidated answer. Slower and costlier than a single model call (2-3x). Use for complex reasoning, deep research, cross-model verification, or high-stakes answers where consensus adds value. Do NOT use for routine lookups, single-turn Q&A, or trivial tasks. OpenFusion does not call tools — provide the prompt and any gathered context yourself. Optional 'persona' (e.g. 'qa', 'researcher', 'pm') tailors the worker + judge prompts to the task; defaults to the active persona in the dashboard.",
+      inputSchema: fusionInputSchema,
+      execution: { taskSupport: "optional" },
+    },
+    {
+      // NOTE: param types are explicit because the SDK's experimental registerToolTask
+      // overloads don't infer the handler signature reliably across zod v3/v4 compat.
+      // Cast as ToolTaskHandler to assert the contract; runtime shapes are correct.
+      createTask: async (
+        args: { prompt: string; context?: string; persona?: string },
+        extra: CreateTaskRequestHandlerExtra,
+      ) => {
+        const task = await startDetachedFusion(
+          {
+            prompt: args.prompt,
+            context: args.context,
+            persona: args.persona,
+            db,
+            openBrowserOnNeedsConfig: options.openBrowserOnNeedsConfig,
+          },
+          extra as unknown as TaskHandlerExtra,
+        );
+        return { task };
+      },
+      getTask: async (_args: unknown, extra: TaskRequestHandlerExtra) =>
+        extra.taskStore.getTask(extra.taskId),
+      getTaskResult: async (_args: unknown, extra: TaskRequestHandlerExtra) =>
+        extra.taskStore.getTaskResult(extra.taskId),
+    } as unknown as ToolTaskHandler<typeof fusionInputSchema>,
   );
 
   // Tool: open_dashboard — pop the config/stats UI in a browser.

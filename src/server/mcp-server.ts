@@ -117,6 +117,8 @@ export async function createMcpServer(options: McpServerOptions = {}): Promise<M
       // NOTE: param types are explicit because the SDK's experimental registerToolTask
       // overloads don't infer the handler signature reliably across zod v3/v4 compat.
       // Cast as ToolTaskHandler to assert the contract; runtime shapes are correct.
+      // REVISIT on SDK upgrade: if the cast stops compiling, the handler interface
+      // changed — fix the handler, don't just widen the cast. See research.md R-010.
       createTask: async (
         args: { prompt: string; context?: string; persona?: string },
         extra: CreateTaskRequestHandlerExtra,
@@ -139,6 +141,15 @@ export async function createMcpServer(options: McpServerOptions = {}): Promise<M
         extra.taskStore.getTaskResult(extra.taskId),
     } as unknown as ToolTaskHandler<typeof fusionInputSchema>,
   );
+
+  // Compile-time canary: fails to compile if ToolTaskHandler's shape changes on SDK
+  // upgrade, surfacing a break at build time rather than runtime. No-op at runtime.
+  const _fusionTaskHandlerShapeCanary: ToolTaskHandler<typeof fusionInputSchema> = {
+    createTask: (() => { throw new Error("canary, never called"); }) as never,
+    getTask: (() => { throw new Error("canary, never called"); }) as never,
+    getTaskResult: (() => { throw new Error("canary, never called"); }) as never,
+  };
+  void _fusionTaskHandlerShapeCanary;
 
   // Tool: open_dashboard — pop the config/stats UI in a browser.
   server.tool(

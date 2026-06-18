@@ -106,6 +106,13 @@ Single-shot fan-out → two-step judge. NOT an agent: workers get no tools; the 
 
 Both judge steps use the **same** provider/model combo.
 
+**Task-capable (MCP Tasks / SEP-1686).** Registered via `server.experimental.tasks.registerToolTask` with `taskSupport: 'optional'`. On a Tasks-aware client the `tools/call` returns a `CreateTaskResult` immediately and the fusion runs detached in the same process (`src/fusion/task-runner.ts`); the client fetches the result via `tasks/get` + `tasks/result`. On a non-Tasks client the SDK auto-polls and returns the final `CallToolResult` (blocking, unchanged from pre-task behavior). Fusion semantics are identical on both paths — only *when* `tools/call` returns differs. Design and wiring details in `specs/005-mcp-tasks-sep/`.
+
+**Known limitations (v1, documented):**
+- **Tasks are non-durable.** `InMemoryTaskStore` + a module-level `Map<taskId, activityId>` live in-process; a restart loses in-flight tasks. The SQLite `activities` row is the durable record (may be left at `status='running'` on crash). Task IDs are ephemeral — clients must not persist them across sessions.
+- **Event-loop blocking under concurrent load.** `better-sqlite3` is synchronous; a long fusion can delay a second client's calls and the Express dashboard. Tolerable for a single-user local tool (Constitution VII); revisit if multi-user.
+- **No cancellation wiring.** SEP-1686 `tasks/cancel` is not implemented; `runFusion` has no `AbortController`, so a cancelled fusion runs to completion. Scoped as a possible v1.1 addition.
+
 ## Conventions
 
 - **pnpm, not npm** — use pnpm for all dependency installs.

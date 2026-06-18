@@ -78,11 +78,11 @@
 
 ### Tests for User Story 2
 
-- [ ] T012 [P] [US2] [FR-008] [SC-005] Write `tests/fusion-tasks.test.ts` T2: call `fusion` WITHOUT a `task` param against the faux setup; assert the call blocks and returns a `CallToolResult` directly (not a `CreateTaskResult`), with content matching the T006/T007 result for the same inputs.
+- [X] T012 [P] [US2] [FR-008] [SC-005] Write `tests/fusion-tasks.test.ts` T2: call `fusion` WITHOUT a `task` param against the faux setup; assert the call blocks and returns a `CallToolResult` directly (not a `CreateTaskResult`), with content matching the T006/T007 result for the same inputs.
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Verify the existing `tests/mcp-server.test.ts` fusion handler tests still pass unchanged against the `registerToolTask` registration (they exercise the non-augmented path). If any test breaks due to the registration change, update the test setup to drive the tool via the same non-augmented call shape — but DO NOT weaken assertions. This task is validation + minimal test-harness adjustment only.
+- [X] T013 [US2] Verify the existing `tests/mcp-server.test.ts` fusion handler tests still pass unchanged against the `registerToolTask` registration (they exercise the non-augmented path). If any test breaks due to the registration change, update the test setup to drive the tool via the same non-augmented call shape — but DO NOT weaken assertions. This task is validation + minimal test-harness adjustment only.
 
 **Checkpoint**: US1 and US2 both green. Tasks-aware AND non-Tasks clients work; no regression.
 
@@ -96,14 +96,14 @@
 
 ### Tests for User Story 3
 
-- [ ] T014 [P] [US3] [FR-009] Write `tests/fusion-tasks.test.ts` T3: configure faux providers so all but one fail (< 2 survivors); task-augmented call → `tasks/result`. Assert `isError: true` with the survival message, task `status==='failed'`, activity `status==='error'`.
-- [ ] T015 [P] [US3] [FR-009] Write `tests/fusion-tasks.test.ts` T4: with OpenFusion unconfigured, task-augmented call. Assert the task transitions to `failed` WITHOUT spawning background fan-out (fast), and `tasks/result` returns the needs-config error pointing to `http://localhost:9077`.
-- [ ] T016 [P] [US3] Write `tests/fusion-tasks.test.ts` T7: after T3/T4 reach terminal state, call `tasks/result` twice more; assert identical results each time and no new `sub_calls` (INV-5 idempotency).
+- [X] T014 [P] [US3] [FR-009] Write `tests/fusion-tasks.test.ts` T3: configure faux providers so all but one fail (< 2 survivors); task-augmented call → `tasks/result`. Assert `isError: true` with the survival message, task `status==='failed'`, activity `status==='error'`.
+- [X] T015 [P] [US3] [FR-009] Write `tests/fusion-tasks.test.ts` T4: with OpenFusion unconfigured, task-augmented call. Assert the task transitions to `failed` WITHOUT spawning background fan-out (fast), and `tasks/result` returns the needs-config error pointing to `http://localhost:9077`.
+- [X] T016 [P] [US3] Write `tests/fusion-tasks.test.ts` T7: after T3/T4 reach terminal state, call `tasks/result` twice more; assert identical results each time and no new `sub_calls` (INV-5 idempotency).
 
 ### Implementation for User Story 3
 
-- [ ] T017 [US3] [FR-004] [FR-009] In `src/fusion/task-runner.ts`, ensure the detached IIFE's catch block maps every `runFusion` rejection (survival failure, judge error, unexpected throw) to `taskStore.storeTaskResult(taskId, 'failed', { isError: true, content: [{ type: 'text', text: errorMessage }] })`. The `errorMessage` MUST carry `code` + `retryable` per the existing error contract — reuse `runFusion`'s error shape, do not invent a new one.
-- [ ] T018 [US3] [FR-006] [FR-009] Handle the config-gate failure in the task path: if `runFusion`'s pre-flight config check fails (unconfigured), the task should reach `failed` without doing fan-out work. Verify this falls out naturally from `runFusion` rejecting early — if not, short-circuit in `startDetachedFusion` before calling `runFusion`. Decide at impl time; keep it minimal.
+- [X] T017 [US3] [FR-004] [FR-009] In `src/fusion/task-runner.ts`, ensure the detached IIFE's catch block maps every `runFusion` rejection (survival failure, judge error, unexpected throw) to `taskStore.storeTaskResult(taskId, 'failed', { isError: true, content: [{ type: 'text', text: errorMessage }] })`. The `errorMessage` MUST carry `code` + `retryable` per the existing error contract — reuse `runFusion`'s error shape, do not invent a new one.
+- [X] T018 [US3] [FR-006] [FR-009] Handle the config-gate failure in the task path: if `runFusion`'s pre-flight config check fails (unconfigured), the task should reach `failed` without doing fan-out work. Verify this falls out naturally from `runFusion` rejecting early — if not, short-circuit in `startDetachedFusion` before calling `runFusion`. Decide at impl time; keep it minimal.
 
 **Checkpoint**: Errors are first-class. No task can hang; every failure mode reaches a terminal state.
 
@@ -117,11 +117,11 @@
 
 ### Tests for User Story 4
 
-- [ ] T019 [P] [US4] [FR-005] Write `tests/fusion-tasks.test.ts` T6: with faux providers slowed (e.g. artificial delay) so stages are observable, repeatedly call `tasks/get { taskId }` during the run; assert `status==='working'` and `statusMessage` advances through the milestone strings, ending at `completed`.
+- [X] T019 [P] [US4] [FR-005] Write `tests/fusion-tasks.test.ts` T6: with faux providers slowed (e.g. artificial delay) so stages are observable, repeatedly call `tasks/get { taskId }` during the run; assert `status==='working'` and `statusMessage` advances through the milestone strings, ending at `completed`.
 
 ### Implementation for User Story 4
 
-- [ ] T020 [US4] [FR-005] Confirm T009's `onProgress → updateTaskStatus('working', msg)` wiring surfaces via `tasks/get`. If T019 reveals timing races (the task completes before any `tasks/get` lands), that's acceptable — progress is best-effort (constitution Principle III). Do not add artificial delays to production code to make the test pass; instead slow the faux providers in the test only.
+- [X] T020 [US4] [FR-005] Confirm T009's `onProgress → updateTaskStatus('working', msg)` wiring surfaces via `tasks/get`. If T019 reveals timing races (the task completes before any `tasks/get` lands), that's acceptable — progress is best-effort (constitution Principle III). Do not add artificial delays to production code to make the test pass; instead slow the faux providers in the test only.
 
 **Checkpoint**: Best-effort progress works when observable; correctness never depends on it.
 
@@ -131,11 +131,11 @@
 
 **Purpose**: Docs, end-to-end validation, cleanup.
 
-- [ ] T021 [P] [FR-010] Update `.zcode/skills/openfusion/SKILL.md`: document that fusion is now non-blocking on Tasks-aware clients (returns a task handle; client/host fetches the result via standard Tasks methods — the LLM does nothing different), and that non-Tasks clients fall back to blocking. No change to when-to-use guidance.
-- [ ] T022 [P] Run the full `quickstart.md` validation suite: T1–T7 (deterministic) must all pass; E1 (real client ~90s fusion, no timeout — SC-001) and E2 (dashboard parity — SC-003) verified manually.
-- [ ] T023 [SC-004] Run `pnpm test` and confirm the full suite (existing 57 + new T006–T019) is green. Fix any regressions.
-- [ ] T024 Delete the throwaway `scripts/probe-tasks-api.ts` from T002. Ensure no stray `console.log` calls were introduced in `src/` (grep `console.log src/` — must be empty; stderr only).
-- [ ] T025 [P] Update `AGENTS.md` architecture notes if the fusion tool's contract changed materially (the `fusion` tool section under "## The `fusion` Tool" — add a note that it's task-capable with `optional` fallback). Keep it surgical; do not rewrite the section.
+- [X] T021 [P] [FR-010] Update `.zcode/skills/openfusion/SKILL.md`: document that fusion is now non-blocking on Tasks-aware clients (returns a task handle; client/host fetches the result via standard Tasks methods — the LLM does nothing different), and that non-Tasks clients fall back to blocking. No change to when-to-use guidance.
+- [X] T022 [P] Run the full `quickstart.md` validation suite: T1–T7 (deterministic) must all pass; E1 (real client ~90s fusion, no timeout — SC-001) and E2 (dashboard parity — SC-003) verified manually.
+- [X] T023 [SC-004] Run `pnpm test` and confirm the full suite (existing 57 + new T006–T019) is green. Fix any regressions.
+- [X] T024 Delete the throwaway `scripts/probe-tasks-api.ts` from T002. Ensure no stray `console.log` calls were introduced in `src/` (grep `console.log src/` — must be empty; stderr only).
+- [X] T025 [P] Update `AGENTS.md` architecture notes if the fusion tool's contract changed materially (the `fusion` tool section under "## The `fusion` Tool" — add a note that it's task-capable with `optional` fallback). Keep it surgical; do not rewrite the section.
 
 ---
 

@@ -18,12 +18,13 @@ function withBuiltins(stored: { id: string; builtin?: boolean }[]): typeof BUILT
 export function personasRouter(): Router {
   const r = Router();
 
-  // GET: list all personas (stored + any missing builtins), plus the active id.
+  // GET: list all personas (stored + any missing builtins), plus the active id + policy.
   r.get("/", (_req, res) => {
     const config = loadConfig();
     res.json({
       personas: withBuiltins(config.personas ?? []),
       activePersona: config.settings.activePersona ?? DEFAULT_PERSONA_ID,
+      personaPolicy: config.settings.personaPolicy ?? "allow-override",
     });
   });
 

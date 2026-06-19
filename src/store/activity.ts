@@ -19,6 +19,11 @@ export interface ActivityRow {
   error?: string | null;
   /** Persona id/name used for this fusion (migration 003; null for pre-0.2.1 fusions). */
   persona?: string | null;
+  /**
+   * HOW the persona was chosen (migration 004; null for pre-0.3.0 fusions):
+   * active | override | strict-enforced | invalid-fallback. See persona-policy.ts.
+   */
+  persona_source?: string | null;
 }
 
 export interface SubCallRow {
@@ -51,10 +56,10 @@ const insertActivity = (db: DB) =>
     INSERT INTO activities
       (id, created_at, prompt_excerpt, has_context, candidate_count, survivor_count,
        judge_provider, judge_model, total_input_tokens, total_output_tokens,
-       total_cost, total_latency_ms, status, error, persona)
+       total_cost, total_latency_ms, status, error, persona, persona_source)
     VALUES (@id, @created_at, @prompt_excerpt, @has_context, @candidate_count, @survivor_count,
        @judge_provider, @judge_model, @total_input_tokens, @total_output_tokens,
-       @total_cost, @total_latency_ms, @status, @error, @persona)
+       @total_cost, @total_latency_ms, @status, @error, @persona, @persona_source)
   `);
 
 export function recordActivity(db: DB, row: ActivityRow): string {
@@ -75,6 +80,7 @@ export function recordActivity(db: DB, row: ActivityRow): string {
     status: row.status,
     error: row.error ?? null,
     persona: row.persona ?? null,
+    persona_source: row.persona_source ?? null,
   });
   return id;
 }
@@ -88,7 +94,7 @@ export function recordActivity(db: DB, row: ActivityRow): string {
 export function allocateActivity(
   db: DB,
   row: Pick<ActivityRow, "candidate_count" | "survivor_count"> &
-    Partial<Pick<ActivityRow, "prompt_excerpt" | "has_context" | "persona" | "id" | "created_at">>,
+    Partial<Pick<ActivityRow, "prompt_excerpt" | "has_context" | "persona" | "persona_source" | "id" | "created_at">>,
 ): string {
   return recordActivity(db, {
     candidate_count: row.candidate_count,
@@ -96,6 +102,7 @@ export function allocateActivity(
     prompt_excerpt: row.prompt_excerpt,
     has_context: row.has_context ?? 0,
     persona: row.persona ?? null,
+    persona_source: row.persona_source ?? null,
     id: row.id,
     created_at: row.created_at,
     status: "running",
@@ -146,6 +153,7 @@ export function updateActivity(db: DB, id: string, patch: Partial<ActivityRow>):
     "total_latency_ms",
     "status",
     "error",
+    "persona_source",
   ];
   const sets: string[] = [];
   const params: Record<string, unknown> = { id };

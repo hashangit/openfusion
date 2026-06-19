@@ -13,6 +13,36 @@ export interface Persona {
   synthesisPrompt: string;
 }
 
+/**
+ * Lightweight discovery projection of a Persona — what `list_personas` (feature 006)
+ * returns to MCP clients. EXCLUDES all prompt fields: agents pick by name + description
+ * and never need the raw worker/analysis/synthesis text (token efficiency + avoids
+ * exposing user-authored prompt IP). See contracts/mcp-persona-tools.md.
+ */
+export interface PersonaLite {
+  id: string;
+  name: string;
+  description?: string;
+  builtin: boolean;
+  /** Computed: true for the single active persona. Exactly one entry has this true. */
+  active: boolean;
+}
+
+/**
+ * Project a Persona → PersonaLite, marking it active iff its id matches the active id.
+ * The caller resolves the active id via resolvePersona() so the precedence
+ * (override→active→generalist→first) is honored; here we just compare.
+ */
+export function toLite(persona: Persona, activeId: string): PersonaLite {
+  return {
+    id: persona.id,
+    name: persona.name,
+    description: persona.description,
+    builtin: persona.builtin ?? false,
+    active: persona.id === activeId,
+  };
+}
+
 export const DEFAULT_PERSONA_ID = "generalist";
 
 /** The shipped defaults. The UI resets a builtin to these on demand. */

@@ -72,12 +72,25 @@ export function migrate(raw: unknown): unknown {
   }
   if (migrated && migratedTo < 3) migratedTo = 3;
 
+  // v3 -> v4: inject personaPolicy default if absent (feature 006).
+  // Old files (or freshly-migrated v3 files) lack this field; Zod would also default it,
+  // but injecting here keeps the on-disk file explicit + bumps the version stamp.
+  const settingsV4 = (out.settings ?? {}) as Record<string, unknown>;
+  if (!settingsV4.personaPolicy) {
+    settingsV4.personaPolicy = "allow-override";
+    out.settings = settingsV4;
+    migrated = true;
+  }
+  if (migrated && migratedTo < 4) migratedTo = 4;
+
   if (migrated) {
     out.version = migratedTo;
     const note =
-      migratedTo === 3
-        ? "config upgraded (personas added + activePersona set)"
-        : "config upgraded from v1 → v2 (judge→judges, enabled flags)";
+      migratedTo === 4
+        ? "config upgraded (personaPolicy added)"
+        : migratedTo === 3
+          ? "config upgraded (personas added + activePersona set)"
+          : "config upgraded from v1 → v2 (judge→judges, enabled flags)";
     console.error(`OpenFusion: ${note}. Re-save via the dashboard to persist.`);
   }
   return out;

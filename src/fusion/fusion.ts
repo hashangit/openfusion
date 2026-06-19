@@ -8,6 +8,7 @@ import { getKey } from "../config/secrets.js";
 import { resolveModel, type AnyModel } from "../providers/pi-ai-bridge.js";
 import { runWorker, type WorkerResult } from "./worker.js";
 import { resolvePersona } from "./personas.js";
+import { resolvePersonaWithPolicy, shouldEmitEvent, type PersonaEvent, type PersonaEventResult } from "./persona-policy.js";
 import { runAnalysis, runSynthesis, type CandidateView } from "./judge.js";
 import { paths } from "../util/paths.js";
 import type { DB } from "../store/db.js";
@@ -23,6 +24,18 @@ export interface FusionInput {
   config: RawConfig;
   /** Optional per-call persona override (id or name); defaults to the active persona. */
   persona?: string;
+  /**
+   * Where this call originated (feature 006). "ui" bypasses the persona policy entirely
+   * (the user is the picker) → persona_source is always "active". "mcp" (default) is
+   * subject to config.settings.personaPolicy.
+   */
+  source?: "mcp" | "ui";
+  /**
+   * Optional engine→transport callback for persona-policy events (feature 006). The MCP
+   * layer wires this to emit notifications/message warnings + (when supported) a
+   * relax-strict elicitation. Absent on UI calls (no policy to enforce).
+   */
+  onPersonaEvent?: (e: PersonaEvent) => Promise<PersonaEventResult>;
   /** Injected so tests can swap a temp DB. */
   db: DB;
   /** Injected so tests can point secrets/master.key elsewhere. */
@@ -73,22 +86,54 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   const candidates = (input.config.candidates ?? []).filter((c) => c.enabled !== false);
   const judge = (input.config.judges ?? []).find((j) => j.enabled !== false);
   const benchmark = input.config.settings.benchmarkMode === true;
-  // Resolve the persona: per-call override -> active persona -> generalist default.
-  // Falls back gracefully (never fails) — a missing persona always yields real prompts.
-  const persona = resolvePersona({
-    override: input.persona,
+  // Benchmark mode forces a 10-min candidate timeout; the judge always uses the
+  // user's configured workerTimeoutMs (a judge is one call, not benchmarked).
+  const candidateTimeoutMs = benchmark ? 600_000 : input.config.settings.workerTimeoutMs;
+  const judgeTimeoutMs = input.config.settings.workerTimeoutMs;
+
+  // --- Persona resolution with policy (feature 006; FR-009) ---
+  // resolvePersonaWithPolicy classifies the resolution (active/override/strict-enforced/
+  // invalid-fallback). When strict-enforced, the transport may elicit a relax opt-in from
+  // the user; if granted, we re-resolve to the requested persona (source flips to override).
+  // This is the SINGLE enforcement site — both the plain fusion tool + the task path go
+  // through runFusion (FR-009). UI calls pass source:"ui" and skip the policy entirely.
+  const policy = input.config.settings.personaPolicy ?? "allow-override";
+  let resolved = resolvePersonaWithPolicy({
+    requested: input.persona,
     personas: input.config.personas ?? [],
     activeId: input.config.settings.activePersona,
+    policy,
+    source: input.source ?? "mcp",
   });
+
+  // If strict-enforced AND the transport provided a callback, emit the event. The callback
+  // may trigger an elicitation (mcp-server.ts) and return "relax" — in which case we honor
+  // the requested persona this call (audit flips to "override").
+  const event = shouldEmitEvent(resolved);
+  if (event && input.onPersonaEvent) {
+    try {
+      const answer = await input.onPersonaEvent(event);
+      if (event.kind === "elicitation-request" && answer === "relax") {
+        // User relaxed for this session — run the requested persona (audit: "override").
+        resolved = {
+          persona: resolvePersona({ override: resolved.requestedId, personas: input.config.personas ?? [], activeId: input.config.settings.activePersona }),
+          personaSource: "override",
+          requestedId: resolved.requestedId,
+        };
+      }
+    } catch {
+      // Best-effort: elicitation failures fall through to the strict-enforced resolution.
+      // The fusion must still complete (Constitution III — never block on policy).
+    }
+  }
+
+  const persona = resolved.persona;
+  const personaSource = resolved.personaSource;
   const personaPrompts = {
     worker: persona.workerPrompt,
     analysis: persona.analysisPrompt,
     synthesis: persona.synthesisPrompt,
   };
-  // Benchmark mode forces a 10-min candidate timeout; the judge always uses the
-  // user's configured workerTimeoutMs (a judge is one call, not benchmarked).
-  const candidateTimeoutMs = benchmark ? 600_000 : input.config.settings.workerTimeoutMs;
-  const judgeTimeoutMs = input.config.settings.workerTimeoutMs;
   if (!judge) {
     // isConfigured() should have caught this, but guard anyway.
     return {
@@ -121,6 +166,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
       total_cost: 0,
       total_latency_ms: 0,
       persona: persona.id,
+      persona_source: personaSource,
       status: "error", // pessimistic default; updated on success/partial
       error: "in-progress",
     });

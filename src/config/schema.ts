@@ -3,9 +3,14 @@
 //
 // v2 (0.1.1): candidates carry `enabled`; `judge` → `judges[]`; benchmarkMode.
 // v3 (0.1.1): personas (worker/analysis/synthesis prompt bundles) + activePersona.
+// v4 (0.3.0): personaPolicy — gates whether MCP clients may override the active persona.
 import { z } from "zod";
 
-export const CONFIG_VERSION = 3 as const;
+export const CONFIG_VERSION = 4 as const;
+
+/** Whether MCP clients may override the dashboard's active persona per fusion (feature 006). */
+export const PersonaPolicySchema = z.enum(["strict", "allow-override"]).default("allow-override");
+export type PersonaPolicy = z.infer<typeof PersonaPolicySchema>;
 
 const LOOPBACK = /^(127\.|localhost$|::1$|0:0:0:0:0:0:0:1$)/;
 
@@ -42,8 +47,10 @@ export const SettingsSchema = z
     bind: z.string().regex(LOOPBACK, "must be a loopback address").default("127.0.0.1"),
     benchmarkMode: z.boolean().default(false),
     activePersona: z.string().default("generalist"),
+    /** Gates MCP-client persona overrides per fusion (feature 006). UI fusions are exempt. */
+    personaPolicy: PersonaPolicySchema,
   })
-  .default({ workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false, activePersona: "generalist" });
+  .default({ workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false, activePersona: "generalist", personaPolicy: "allow-override" });
 export type Settings = z.infer<typeof SettingsSchema>;
 
 /** Strict, fully-configured config (what isConfigured() ultimately wants). */
@@ -69,5 +76,5 @@ export const RawConfigSchema = z
     personas: z.array(PersonaSchema).optional().default([]),
     settings: SettingsSchema,
   })
-  .default({ settings: { workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false, activePersona: "generalist" } });
+  .default({ settings: { workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false, activePersona: "generalist", personaPolicy: "allow-override" } });
 export type RawConfig = z.infer<typeof RawConfigSchema>;

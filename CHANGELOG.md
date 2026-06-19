@@ -57,7 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The three system prompts are no longer hardcoded — they're threaded from the resolved persona through the worker and both judge steps. The standalone `prompts.ts` is removed.
 
 ## [0.2.0] - 2026-06-18
-## [0.2.0] - 2026-06-18
 
 ### Added
 - **Published to npm** — `npx -y openfusion-mcp` now works with no clone/build. Every client snippet defaults to it.
@@ -75,7 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs**: README leads with `npx`; documents `OPENFUSION_HOME` (and that it prints on startup), the native-build requirement + recovery, an Updating section, and the client tool-call-timeout caveat (a client can time out while the server completes and logs the fusion — check Generations/Errors).
 
 ## [0.1.2] - 2026-06-17
-## [0.1.2] - 2026-06-17
 
 ### Added
 - **Generations tab** — read what each model actually produced for a given fusion. Pick an activity from a dropdown, choose Candidates or Judge view. Candidates view shows generation boxes side by side (2 by default, add more to the right with horizontal scroll), each with a per-box model dropdown, a scrollable rendered view of the generation, and per-box stats (tokens/cost/latency/status). Judge view shows the structured analysis (consensus/contradictions/partial coverage/unique insights/blind spots) plus the synthesized final answer.
@@ -85,7 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Nav reorder**: Dashboard · Generations · Candidates · Judge · API Keys · Errors (Generations right after Dashboard; Errors moved to the end).
 - Lightweight markdown-ish rendering of generations (headings, bold, inline code, code fences, lists) with a copy button.
 
-## [0.1.1] - 2026-06-16
 ## [0.1.1] - 2026-06-16
 
 ### Added

@@ -84,7 +84,7 @@ export function ActivityTable({ items }: { items: Activity[] }) {
   );
 }
 
-function SubCallTable({ subCalls }: { subCalls: SubCall[] }) {
+export function SubCallTable({ subCalls }: { subCalls: SubCall[] }) {
   return (
     <div>
       <p className="mb-2 text-xs font-medium text-white/60">

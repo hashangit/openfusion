@@ -8,6 +8,7 @@
 //
 // stdout is the JSON-RPC channel — ALL logs go to stderr (AGENTS.md conventions).
 import { runFusion, PROMPT_EXCERPT_LEN, type FusionResult } from "./fusion.js";
+import type { PersonaEvent, PersonaEventResult } from "./persona-policy.js";
 import { allocateActivity } from "../store/activity.js";
 import { loadConfig } from "../config/store.js";
 import type { DB } from "../store/db.js";
@@ -36,6 +37,13 @@ export interface DetachedFusionArgs {
   persona?: string;
   db: DB;
   openBrowserOnNeedsConfig?: boolean;
+  /**
+   * Optional persona-event callback (feature 006). The MCP createTask handler builds this
+   * from its `extra` (notification + elicitation) and forwards it so the detached fusion
+   * enforces persona policy identically to the blocking path (FR-009 — single enforcement
+   * site in runFusion, both entry paths wired).
+   */
+  onPersonaEvent?: (e: PersonaEvent) => Promise<PersonaEventResult>;
 }
 
 /**
@@ -127,6 +135,7 @@ async function runDetached(
       db: args.db,
       activityId,
       onProgress: report,
+      onPersonaEvent: args.onPersonaEvent,
     });
   } catch (err) {
     // runFusion never throws in practice (it returns FusionResult with ok:false), but

@@ -108,6 +108,11 @@ Both judge steps use the **same** provider/model combo.
 
 **Task-capable (MCP Tasks / SEP-1686).** Registered via `server.experimental.tasks.registerToolTask` with `taskSupport: 'optional'`. On a Tasks-aware client the `tools/call` returns a `CreateTaskResult` immediately and the fusion runs detached in the same process (`src/fusion/task-runner.ts`); the client fetches the result via `tasks/get` + `tasks/result`. On a non-Tasks client the SDK auto-polls and returns the final `CallToolResult` (blocking, unchanged from pre-task behavior). Fusion semantics are identical on both paths — only *when* `tools/call` returns differs. Design and wiring details in `specs/005-mcp-tasks-sep/`.
 
+**Persona discovery + policy (feature 006).** Two additional MCP tools + a config-gated override path:
+- `list_personas` — read-only discovery; returns `[{id, name, description, builtin, active}]` (no prompt text). Never gated by policy.
+- `fusion`'s optional `persona` arg — agents discover via `list_personas`, then pass `persona:<id>`. Resolution is audited on `activities.persona_source` (`active` | `override` | `strict-enforced` | `invalid-fallback`).
+- `config.settings.personaPolicy` (`strict` | `allow-override`, default `allow-override`) — gates MCP-client overrides only (UI fusions exempt via `FusionInput.source:"ui"`). Strict = warn + continue (never block): the active persona runs, a `notifications/message` warning fires, and if the client advertises `elicitation.form` the user is asked once per session to relax (`SessionOverrideState` dedupes concurrent callers). Invalid ids never error — they fall back to active with `persona_source="invalid-fallback"`. Enforcement lives in `runFusion` (single site, both entry paths). Details in `specs/006-persona-discovery/`.
+
 **Known limitations (v1, documented):**
 - **Tasks are non-durable.** `InMemoryTaskStore` + a module-level `Map<taskId, activityId>` live in-process; a restart loses in-flight tasks. The SQLite `activities` row is the durable record (may be left at `status='running'` on crash). Task IDs are ephemeral — clients must not persist them across sessions.
 - **Event-loop blocking under concurrent load.** `better-sqlite3` is synchronous; a long fusion can delay a second client's calls and the Express dashboard. Tolerable for a single-user local tool (Constitution VII); revisit if multi-user.
@@ -126,7 +131,16 @@ Both judge steps use the **same** provider/model combo.
 - **Pin `@earendil-works/pi-ai` exactly** — it's pre-1.0; `save-exact`. Do NOT use the deprecated `@mariozechner/pi-ai`.
 
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
-at specs/005-mcp-tasks-sep/plan.md
+Active feature: **006-persona-discovery** (Persona Discovery & Policy — MCP).
+Stage: tasks generated, ready to implement.
+
+Working documents (read in order before implementing):
+- Current plan: specs/006-persona-discovery/plan.md (tech context, constitution gate, project structure)
+- Task list: specs/006-persona-discovery/tasks.md (45 ordered tasks T001–T045, MVP = Phases 1→2→3)
+- Spec: specs/006-persona-discovery/spec.md (4 user stories, FR-001..016, SC-001..009)
+- Design depth: specs/006-persona-discovery/research.md (R-001..R-011 locked decisions),
+  data-model.md (entities + migration 004), contracts/mcp-persona-tools.md (tool/notification/elicitation shapes),
+  quickstart.md (T1–T11 + E1–E2 validation scenarios)
+
+Implement MVP-first: Setup → Foundational → User Story 1, then validate before continuing.
 <!-- SPECKIT END -->

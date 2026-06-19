@@ -90,6 +90,12 @@ const MIGRATIONS: { id: string; sql: string }[] = [
       ALTER TABLE activities ADD COLUMN persona TEXT;
     `,
   },
+  {
+    id: "004_add_persona_source",
+    sql: `
+      ALTER TABLE activities ADD COLUMN persona_source TEXT;
+    `,
+  },
 ];
 
 function migrate(db: DB): void {

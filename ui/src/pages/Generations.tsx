@@ -76,6 +76,17 @@ export function GenerationsPage() {
           <option value="candidates">Candidates</option>
           <option value="judge">Judge</option>
         </select>
+        {detail?.persona && (
+          <span
+            className="rounded-full border border-[#4cd0b0]/40 bg-[#4cd0b0]/10 px-2.5 py-1 text-xs text-[#4cd0b0]"
+            title={`Persona used for this fusion${detail.persona_source ? ` (source: ${detail.persona_source})` : ""}`}
+          >
+            ◈ {detail.persona}
+            {detail.persona_source === "override" && " (client override)"}
+            {detail.persona_source === "strict-enforced" && " (strict-enforced)"}
+            {detail.persona_source === "invalid-fallback" && " (invalid-fallback)"}
+          </span>
+        )}
       </div>
 
       {loadingDetail && <p className="text-sm text-white/50">Loading…</p>}
@@ -129,10 +140,10 @@ function CandidatesView({ workers }: { workers: SubCall[] }) {
           const w = workers[workerIdx];
           if (!w) return null;
           return (
-            <div key={boxIdx} className="glass-soft flex w-[22rem] flex-shrink-0 flex-col p-3">
+            <div key={boxIdx} className="glass-soft flex w-[22rem] min-w-0 flex-shrink-0 flex-col p-3">
               <div className="mb-2 flex items-center gap-2">
                 <select
-                  className="field flex-1 text-xs"
+                  className="field min-w-0 flex-1 truncate text-xs"
                   value={workerIdx}
                   onChange={(e) => setBox(boxIdx, Number(e.target.value))}
                 >
@@ -143,12 +154,17 @@ function CandidatesView({ workers }: { workers: SubCall[] }) {
                   ))}
                 </select>
                 {boxes.length > 1 && (
-                  <button className="btn-icon" onClick={() => removeBox(boxIdx)} title="Remove box">
+                  <button
+                    className="btn-icon flex-shrink-0"
+                    onClick={() => removeBox(boxIdx)}
+                    title="Remove box"
+                    aria-label="Remove box"
+                  >
                     ✕
                   </button>
                 )}
               </div>
-              <div className="mb-2 max-h-96 overflow-y-auto pr-1">
+              <div className="mb-2 min-h-0 flex-1 max-h-96 overflow-y-auto pr-1">
                 <GenerationText text={w.generated_text ?? ""} />
               </div>
               <SubCallStats s={w} />

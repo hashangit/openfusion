@@ -5,6 +5,7 @@ export function PersonasPage() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [activeId, setActiveId] = useState("generalist");
   const [selectedId, setSelectedId] = useState("generalist");
+  const [personaPolicy, setPersonaPolicy] = useState<"strict" | "allow-override">("allow-override");
   const [draft, setDraft] = useState<Persona | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -13,6 +14,7 @@ export function PersonasPage() {
     const r = await api.getPersonas();
     setPersonas(r.personas);
     setActiveId(r.activePersona);
+    setPersonaPolicy(r.personaPolicy);
     setSelectedId((cur) => r.personas.find((p) => p.id === cur)?.id ?? r.activePersona);
   };
   useEffect(() => {
@@ -134,6 +136,26 @@ export function PersonasPage() {
             </li>
           ))}
         </ul>
+        {/* Persona policy (feature 006) — gates MCP-client overrides only. */}
+        <div className="mt-4 border-t border-white/10 pt-3">
+          <label className="text-xs font-medium text-white/60">Persona policy</label>
+          <select
+            className="field mt-1 w-full text-xs"
+            value={personaPolicy}
+            onChange={async (e) => {
+              const next = e.target.value as "strict" | "allow-override";
+              setPersonaPolicy(next);
+              await api.putConfig({ settings: { personaPolicy: next } } as never);
+            }}
+            title="Gates whether MCP clients (e.g. agents) may override your active persona per fusion. Your dashboard fusions are never affected."
+          >
+            <option value="allow-override">Allow agent override (default)</option>
+            <option value="strict">Strict — my active persona wins</option>
+          </select>
+          <p className="mt-1 text-[0.65rem] leading-tight text-white/40">
+            MCP clients only. Under strict, an agent's persona request is ignored (warned), and you may be asked once per session to relax.
+          </p>
+        </div>
       </aside>
 
       {/* Editor */}

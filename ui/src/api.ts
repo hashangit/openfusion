@@ -76,6 +76,13 @@ export interface Activity {
   total_latency_ms: number;
   status: string;
   error?: string | null;
+  /** Persona id/name used for this fusion (null for pre-0.2.1 fusions). */
+  persona?: string | null;
+  /**
+   * HOW the persona was chosen (feature 006; null for pre-0.3.0 fusions):
+   * active | override | strict-enforced | invalid-fallback. Rendered as a chip suffix.
+   */
+  persona_source?: string | null;
   sub_calls?: SubCall[];
 }
 export interface Stats {
@@ -131,7 +138,7 @@ export const api = {
     );
   },
   getActivityDetail: (id: string) => getJSON<Activity>(`/api/activity/${id}`),
-  getPersonas: () => getJSON<{ personas: Persona[]; activePersona: string }>("/api/personas"),
+  getPersonas: () => getJSON<{ personas: Persona[]; activePersona: string; personaPolicy: "strict" | "allow-override" }>("/api/personas"),
   createPersona: (p: Omit<Persona, "id">) => sendJSON<Persona>("POST", "/api/personas", p),
   updatePersona: (id: string, patch: Partial<Persona> | { reset: true }) =>
     sendJSON<Persona>("PUT", `/api/personas/${encodeURIComponent(id)}`, patch),

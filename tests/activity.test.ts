@@ -55,7 +55,7 @@ describe("db: schema", () => {
     expect(JSON.parse(analysis.analysis_json!)).toEqual({ consensus: ["x"], contradictions: [], partialCoverage: [], uniqueInsights: [], blindSpots: [] });
     // migration recorded
     const migs = db.prepare("SELECT id FROM schema_migrations").all() as { id: string }[];
-    expect(migs.map((m) => m.id)).toEqual(["001_initial", "002_add_generated_text", "003_add_persona"]);
+    expect(migs.map((m) => m.id)).toEqual(["001_initial", "002_add_generated_text", "003_add_persona", "004_add_persona_source"]);
   });
 
   it("enforces FK cascade: deleting an activity removes its sub_calls", () => {

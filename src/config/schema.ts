@@ -4,13 +4,22 @@
 // v2 (0.1.1): candidates carry `enabled`; `judge` → `judges[]`; benchmarkMode.
 // v3 (0.1.1): personas (worker/analysis/synthesis prompt bundles) + activePersona.
 // v4 (0.3.0): personaPolicy — gates whether MCP clients may override the active persona.
+// v5 (0.3.0): executionMode — parallel (default) vs sequential (opt-in for low-VRAM local).
 import { z } from "zod";
 
-export const CONFIG_VERSION = 4 as const;
+export const CONFIG_VERSION = 5 as const;
 
 /** Whether MCP clients may override the dashboard's active persona per fusion (feature 006). */
 export const PersonaPolicySchema = z.enum(["strict", "allow-override"]).default("allow-override");
 export type PersonaPolicy = z.infer<typeof PersonaPolicySchema>;
+
+/**
+ * How candidate fan-out is scheduled (feature 007).
+ *  - `parallel` (default): all enabled candidates dispatched concurrently — optimal for cloud.
+ *  - `sequential`: candidates run one at a time in slot order — opt-in for low-VRAM local setups.
+ */
+export const ExecutionModeSchema = z.enum(["parallel", "sequential"]).default("parallel");
+export type ExecutionMode = z.infer<typeof ExecutionModeSchema>;
 
 const LOOPBACK = /^(127\.|localhost$|::1$|0:0:0:0:0:0:0:1$)/;
 
@@ -49,8 +58,10 @@ export const SettingsSchema = z
     activePersona: z.string().default("generalist"),
     /** Gates MCP-client persona overrides per fusion (feature 006). UI fusions are exempt. */
     personaPolicy: PersonaPolicySchema,
+    /** How candidate fan-out is scheduled (feature 007). Default parallel. */
+    executionMode: ExecutionModeSchema,
   })
-  .default({ workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false, activePersona: "generalist", personaPolicy: "allow-override" });
+  .default({ workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false, activePersona: "generalist", personaPolicy: "allow-override", executionMode: "parallel" });
 export type Settings = z.infer<typeof SettingsSchema>;
 
 /** Strict, fully-configured config (what isConfigured() ultimately wants). */
@@ -76,5 +87,5 @@ export const RawConfigSchema = z
     personas: z.array(PersonaSchema).optional().default([]),
     settings: SettingsSchema,
   })
-  .default({ settings: { workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false, activePersona: "generalist", personaPolicy: "allow-override" } });
+  .default({ settings: { workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false, activePersona: "generalist", personaPolicy: "allow-override", executionMode: "parallel" } });
 export type RawConfig = z.infer<typeof RawConfigSchema>;

@@ -14,7 +14,7 @@ export interface AppConfig {
   version: number;
   candidates: CandidateSlot[];
   judges: JudgeConfig[];
-  settings: { workerTimeoutMs: number; uiPort: number; bind: string; benchmarkMode: boolean; activePersona: string };
+  settings: { workerTimeoutMs: number; uiPort: number; bind: string; benchmarkMode: boolean; activePersona: string; executionMode: "parallel" | "sequential" };
   configured: boolean;
 }
 
@@ -98,6 +98,23 @@ export interface Stats {
   fusionsByDay: { day: string; count: number }[];
 }
 
+/** Live fusion-engine status (feature 007, GET /api/runtime — distinct from /api/status). */
+export interface ActiveFusion {
+  activityId: string;
+  mode: "parallel" | "sequential";
+  candidateCount: number;
+  /** Sequential only: which candidate is currently running (1-indexed). */
+  candidateIndex?: number;
+  /** Sequential: how many resolved. Parallel: how many responding so far. */
+  candidatesDone?: number;
+  /** Epoch ms — when the fusion entered the registry. */
+  startedAt: number;
+}
+export interface FusionRuntimeStatus {
+  state: "idle" | "in-progress" | "queued";
+  fusions: ActiveFusion[];
+}
+
 async function getJSON<T>(url: string): Promise<T> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
@@ -128,6 +145,8 @@ export const api = {
     const q = filters ? "?" + new URLSearchParams(filters).toString() : "";
     return getJSON<Stats>(`/api/stats${q}`);
   },
+  /** Live fusion-engine status (feature 007). Polled by the Dashboard status widget. */
+  getStatus: () => getJSON<FusionRuntimeStatus>("/api/runtime"),
   getActivity: (opts: { limit?: number; offset?: number } = {}) => {
     const q = new URLSearchParams({
       limit: String(opts.limit ?? 25),

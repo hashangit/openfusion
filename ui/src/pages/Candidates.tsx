@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
 import { api, type AppConfig, type CandidateSlot, type ProviderModel } from "../api";
 
+/**
+ * Serial time budget in minutes (feature 007). Mirrors the engine constants in
+ * src/fusion/fanout.ts (PER_CANDIDATE_MS=180_000, JUDGE_STEPS_MS=360_000). TS constants
+ * don't trivially cross the UI bundle boundary, so they're duplicated here; the agreement
+ * is guarded by serial-budget.test.ts (T14). If either side changes, update BOTH + the test.
+ */
+const PER_CANDIDATE_MIN = 3;
+const JUDGE_STEPS_MIN = 6;
+function serialBudgetMinutes(enabledCount: number): number {
+  return PER_CANDIDATE_MIN * enabledCount + JUDGE_STEPS_MIN;
+}
+
 export function CandidatesPage({
   config,
   onChanged,
@@ -10,6 +22,7 @@ export function CandidatesPage({
 }) {
   const [candidates, setCandidates] = useState<CandidateSlot[]>([]);
   const [benchmark, setBenchmark] = useState(false);
+  const [sequential, setSequential] = useState(false);
   const [providers, setProviders] = useState<string[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
   const [saving, setSaving] = useState(false);
@@ -19,6 +32,7 @@ export function CandidatesPage({
     if (config) {
       setCandidates(config.candidates);
       setBenchmark(config.settings.benchmarkMode);
+      setSequential(config.settings.executionMode === "sequential");
     }
   }, [config]);
 
@@ -53,6 +67,11 @@ export function CandidatesPage({
   };
 
   const enabledCount = candidates.filter((c) => c.enabled).length;
+  // The engine enforces the budget from the SAVED config's enabled candidates, so the helper
+  // shows that (not the working-state enabledCount, which may be mid-edit). If the working
+  // state differs, flag "(after Save)" so the number doesn't silently mislead.
+  const savedEnabledCount = (config?.candidates ?? []).filter((c) => c.enabled).length;
+  const sequentialBudgetDirty = enabledCount !== savedEnabledCount;
   const rangeError = enabledCount < 2
     ? `Need at least 2 enabled candidates (have ${enabledCount}).`
     : !benchmark && enabledCount > 5
@@ -66,7 +85,7 @@ export function CandidatesPage({
       await api.putConfig({
         candidates,
         judges: config!.judges,
-        settings: { ...config!.settings, benchmarkMode: benchmark },
+        settings: { ...config!.settings, benchmarkMode: benchmark, executionMode: sequential ? "sequential" : "parallel" },
       });
       setMsg("Saved.");
       onChanged();
@@ -109,6 +128,29 @@ export function CandidatesPage({
           role="switch"
           aria-checked={benchmark}
           onClick={() => setBenchmark((b) => !b)}
+        />
+      </div>
+
+      {/* Sequential mode toggle (feature 007) — opt-in for low-VRAM local setups */}
+      <div className="glass-soft mb-4 flex items-center justify-between p-3">
+        <div>
+          <p className="text-sm font-medium">Sequential Mode</p>
+          <p className="text-xs text-white/55">
+            Runs candidates one at a time. Use this for fully-local setups (Ollama/llama.cpp) with limited VRAM;
+            cloud-only setups should stay on Parallel (default).
+          </p>
+          {savedEnabledCount >= 2 && (
+            <p className="text-xs text-white/45">
+              Sequential: up to ~{serialBudgetMinutes(savedEnabledCount)}m total ({savedEnabledCount} candidates × 3m + 6m judging).
+              {sequentialBudgetDirty && <span className="text-amber-300/70"> (after Save)</span>}
+            </p>
+          )}
+        </div>
+        <div
+          className={`toggle ${sequential ? "on" : ""}`}
+          role="switch"
+          aria-checked={sequential}
+          onClick={() => setSequential((s) => !s)}
         />
       </div>
 

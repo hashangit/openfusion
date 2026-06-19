@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
-import { api, type Stats, type Activity } from "../api";
+import { api, type Stats, type Activity, type FusionRuntimeStatus, type ActiveFusion } from "../api";
 import { ActivityTable } from "../components/ActivityTable";
 
 export function DashboardPage() {
@@ -57,6 +57,9 @@ export function DashboardPage() {
           Refresh
         </button>
       </div>
+
+      {/* Server Status (feature 007) — live fusion-engine state from GET /api/runtime */}
+      <ServerStatus />
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -185,4 +188,77 @@ function compactNumber(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`;
   return String(v);
+}
+
+/**
+ * Live fusion-engine status widget (feature 007). Polls GET /api/runtime (distinct from
+ * /api/status) at a coarse 2s interval — paused when the tab is hidden, with an immediate
+ * refetch on regain-focus so the affordance never shows stale progress (FR-015, R-006).
+ * The affordance adapts to mode: parallel "X of N responding", serial "candidate X of N".
+ */
+function ServerStatus() {
+  const [status, setStatus] = useState<FusionRuntimeStatus | null>(null);
+
+  useEffect(() => {
+    // Poll GET /api/runtime. setStatus is stable, so the poll fn needs no ref indirection.
+    const poll = () =>
+      api.getStatus().then(setStatus).catch(() => {
+        // Best-effort: a failed poll (e.g. server briefly down) leaves the last snapshot.
+      });
+    void poll();
+    const POLL_MS = 2000;
+    const id = window.setInterval(() => {
+      // Pause when hidden — pointless requests to a local server when nobody's looking.
+      if (document.visibilityState === "visible") void poll();
+    }, POLL_MS);
+    const onVisible = () => {
+      // Immediate refetch on focus so the widget never shows a frozen "candidate 3 of 5".
+      if (document.visibilityState === "visible") void poll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
+  const dot =
+    status?.state === "idle"
+      ? "bg-white/30"
+      : status?.state === "queued"
+        ? "bg-amber-400"
+        : "bg-emerald-400";
+  return (
+    <section className="glass p-4">
+      <div className="flex items-center gap-2">
+        <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
+        <h3 className="text-sm font-medium text-white/80">Server status</h3>
+      </div>
+      <div className="mt-2">
+        {status?.state === "idle" || !status ? (
+          <p className="text-sm text-white/50">Idle — no fusion running.</p>
+        ) : (
+          <ul className="space-y-1">
+            {status.fusions.map((f) => (
+              <li key={f.activityId} className="text-sm text-white/70">
+                {fusionLine(f)}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** One fusion's affordance line — mode-aware (FR-013). */
+function fusionLine(f: ActiveFusion): string {
+  const elapsed = Math.max(0, Math.round((Date.now() - f.startedAt) / 1000));
+  if (f.mode === "sequential") {
+    const idx = f.candidateIndex ?? 1;
+    const done = f.candidatesDone ?? 0;
+    return `Running — candidate ${idx} of ${f.candidateCount} (${done} done) · ${elapsed}s`;
+  }
+  const done = f.candidatesDone ?? 0;
+  return `Running — ${done} of ${f.candidateCount} candidates responding · ${elapsed}s`;
 }

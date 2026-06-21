@@ -163,27 +163,36 @@ describe("US1 — task path: CreateTaskResult + tasks/result (quickstart T1)", (
   });
 });
 
-describe("US2 — non-Tasks client falls back to blocking (quickstart T2)", () => {
-  it("a non-augmented tools/call blocks and returns a CallToolResult directly (not a CreateTaskResult)", async () => {
-    const { wreg, jreg } = configureFaux({ judgeFinal: "blocking-path answer" });
+describe("US2 — non-Tasks client gets the _resume_from kickoff (feature 008 supersedes blocking)", () => {
+  // Feature 008 changed this contract: a non-Tasks `tools/call` no longer blocks via the
+  // SDK's handleAutomaticTaskPolling (that blocking loop WAS the codex/ZCode timeout bug).
+  // Instead the call returns IMMEDIATELY with a `processing` kickoff shape carrying a
+  // reference_id, and the agent retrieves via `fusion({ _resume_from })`. The full retrieval
+  // round-trip is covered by resume-parallel.test.ts; here we assert the coexistence invariant
+  // that a non-Tasks call gets the kickoff (not a CreateTaskResult, not a block).
+  it("a non-augmented tools/call returns the processing kickoff immediately (not a CreateTaskResult, not a block)", async () => {
+    const { wreg, jreg } = configureFaux({ judgeFinal: "the synthesized answer" });
     const { client, close } = await boot();
     try {
-      // No `task` param — exercises the taskSupport:'optional' fallback. The SDK's
-      // handleAutomaticTaskPolling runs createTask then polls getTaskResult to
-      // completion, returning the final CallToolResult to a non-Tasks client.
+      const t0 = Date.now();
+      // No `task` param — the resume-dispatch wrapper intercepts this and returns the kickoff.
       const res = await client.callTool({ name: "fusion", arguments: { prompt: "compare X vs Y" } });
+      const elapsed = Date.now() - t0;
 
-      // MUST be a CallToolResult, NOT a CreateTaskResult (no `task` field).
+      // NOT a CreateTaskResult (the Tasks path's shape).
       expect((res as { task?: unknown }).task).toBeUndefined();
       expect(res.content).toBeDefined();
       expect(res.content[0].type).toBe("text");
-      expect((res.content[0] as { text: string }).text).toBe("blocking-path answer");
-
-      // Same observability as the task path: one activity row, 4 sub_calls.
-      const actCount = (db.prepare("SELECT COUNT(*) AS n FROM activities").get() as { n: number }).n;
-      expect(actCount).toBe(1);
-      const subCount = (db.prepare("SELECT COUNT(*) AS n FROM sub_calls").get() as { n: number }).n;
-      expect(subCount).toBe(4);
+      const text = (res.content[0] as { text: string }).text;
+      // The parallel kickoff wording (contracts/resume-from.md): reference_id + retrieval mandate.
+      expect(text).toMatch(/reference_id: [0-9a-f-]+/);
+      expect(text).toContain('Call fusion({ "_resume_from"');
+      // Immediate return (no provider work in the call path) — F6's ≈1s honest target.
+      expect(elapsed).toBeLessThan(1000);
+      // Structured _meta carries the reference_id for reliable agent parsing (m10).
+      const meta = (res as { _meta?: { reference_id?: string; retry_after_ms?: number } })._meta;
+      expect(meta?.reference_id).toMatch(/^[0-9a-f-]+$/);
+      expect(meta?.retry_after_ms).toBeGreaterThan(0);
     } finally {
       await close();
       wreg.unregister();

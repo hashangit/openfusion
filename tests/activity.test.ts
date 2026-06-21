@@ -23,7 +23,7 @@ afterEach(() => {
 describe("db: schema", () => {
   it("creates activities + sub_calls tables", () => {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
-    expect(tables.map((t) => t.name).sort()).toEqual(["activities", "schema_migrations", "sub_calls"]);
+    expect(tables.map((t) => t.name).sort()).toEqual(["activities", "fusion_jobs", "schema_migrations", "sub_calls"]);
   });
 
   it("migration 002 adds generated_text + analysis_json columns and they round-trip", () => {
@@ -55,7 +55,7 @@ describe("db: schema", () => {
     expect(JSON.parse(analysis.analysis_json!)).toEqual({ consensus: ["x"], contradictions: [], partialCoverage: [], uniqueInsights: [], blindSpots: [] });
     // migration recorded
     const migs = db.prepare("SELECT id FROM schema_migrations").all() as { id: string }[];
-    expect(migs.map((m) => m.id)).toEqual(["001_initial", "002_add_generated_text", "003_add_persona", "004_add_persona_source"]);
+    expect(migs.map((m) => m.id)).toEqual(["001_initial", "002_add_generated_text", "003_add_persona", "004_add_persona_source", "005_fusion_jobs"]);
   });
 
   it("enforces FK cascade: deleting an activity removes its sub_calls", () => {

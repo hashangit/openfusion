@@ -114,11 +114,14 @@ Both judge steps use the **same** provider/model combo.
 - `config.settings.personaPolicy` (`strict` | `allow-override`, default `allow-override`) — gates MCP-client overrides only (UI fusions exempt via `FusionInput.source:"ui"`). Strict = warn + continue (never block): the active persona runs, a `notifications/message` warning fires, and if the client advertises `elicitation.form` the user is asked once per session to relax (`SessionOverrideState` dedupes concurrent callers). Invalid ids never error — they fall back to active with `persona_source="invalid-fallback"`. Enforcement lives in `runFusion` (single site, both entry paths). Details in `specs/006-persona-discovery/`.
 
 **Sequential fan-out (feature 007).** `config.settings.executionMode` (`parallel` default | `sequential`) governs candidate scheduling. Parallel is the unchanged `Promise.all` fan-out (optimal for cloud). Sequential runs candidates **one at a time** in slot order — an opt-in for low-VRAM local setups (Ollama/llama.cpp) where simultaneous model loads OOM. A serial time budget (`computeSerialBudgetMs = 3min × N + 6min`, `src/fusion/fanout.ts`) gates *launching* the next candidate (never aborts the in-flight one — no `AbortController`); on exhaustion the run proceeds with survivors so far (same ≥2 gate). The per-worker timeout + 3-retry machinery is identical in both modes. Dispatch lives in `runFusion` (single site, both entry paths). A live status surface (`GET /api/runtime` — distinct from `/api/status`; `src/fusion/status.ts` registry, `enter`/`update`/`finally leave` in `runFusion`) feeds a Dashboard widget. Details in `specs/007-sequential-processing/`.
+**Async fusion results via deferred retrieval (feature 008).** The `fusion` tool's optional `_resume_from` arg gives non-Tasks clients (codex/ZCode, which hardcode `task:None`) a deferred-result protocol: a kickoff `fusion({prompt})` returns immediately (~1s) with a `processing` shape carrying a `reference_id`, and the agent retrieves via `fusion({_resume_from: "<id>"})`. Parallel retrievals bounded-long-poll (~45s, under the ~60s codex per-call ceiling — research R-001 VERIFIED) and return the synthesized answer when the fusion lands; sequential retrievals are ETA-guided (immediate return with a refined remaining ETA + dashboard link). The result is byte-identical to the blocking path (SC-006) and to feature 005's Tasks path (FR-015). Durable from kickoff in a new `fusion_jobs` SQLite table (`activity_id` = the reference id = the `activities.id`, identity collapse); live candidate-progress stays ephemeral. A startup sweep reclassifies orphaned `processing` rows from a previous process as `interrupted` (FR-009); a stalled circuit reclassifies rows with stale `last_progress_at` as `error/stalled` (FR-012); a write-late guard extends `expires_at` for processing rows near eviction so a late completion stores rather than lands expired (FR-011). `FusionResult.errorKind` (`no-survivors` | `judge-failed` | `internal`) flows structurally to `fusion_jobs.error_kind` (FR-014). Details in `specs/008-async-fusion-results/`.
+**⚠️ SDK handler override (feature 008, load-bearing).** The deferred-result protocol requires intercepting non-Tasks `tools/call` to the fusion tool BEFORE the SDK's `handleAutomaticTaskPolling` blocks (that blocking poll IS the codex/ZCode timeout bug 008 exists to fix). `src/fusion/resume-dispatch.ts` replaces the SDK's installed `CallToolRequest` handler post-registration: it captures the SDK's handler, installs a wrapper that routes non-Tasks fusion calls to the kickoff/retrieval branches, and delegates Tasks clients + all other tools to the captured handler unchanged (FR-013 preserved by delegation, not reimplementation). This reaches into `server.server._requestHandlers.get("tools/call")` — a documented, deliberate SDK coupling. **On `@modelcontextprotocol/sdk` upgrade, verify** (see `resume-dispatch.ts` header + the dispatch canary test in `tests/resume-parallel.test.ts`): (1) the CallToolRequest handler is still installed eagerly at first-tool registration; (2) the handler key is still `"tools/call"`; (3) `request.params.task` still discriminates Tasks vs non-Tasks and the SDK still blocks non-Tasks via `handleAutomaticTaskPolling`. If the SDK removes the blocking path, the wrapper becomes a no-op pass-through and can be deleted.
 **Known limitations (v1, documented):**
-- **Tasks are non-durable.** `InMemoryTaskStore` + a module-level `Map<taskId, activityId>` live in-process; a restart loses in-flight tasks. The SQLite `activities` row is the durable record (may be left at `status='running'` on crash). Task IDs are ephemeral — clients must not persist them across sessions.
+- **Tasks are non-durable (005 path only).** `InMemoryTaskStore` + a module-level `Map<taskId, activityId>` live in-process; a restart loses in-flight Tasks-path tasks. The SQLite `activities` row is the durable record (may be left at `status='running'` on crash). Task IDs are ephemeral — clients must not persist them across sessions. NOTE: feature 008's `_resume_from` path IS durable (`fusion_jobs` table) and survives restarts via the startup sweep; the non-durability above applies only to the Tasks-path `tasks/result` retrieval, not to `_resume_from`.
 - **Event-loop blocking under concurrent load.** `better-sqlite3` is synchronous; a long fusion can delay a second client's calls and the Express dashboard. Tolerable for a single-user local tool (Constitution VII); revisit if multi-user.
 - **No cancellation wiring.** SEP-1686 `tasks/cancel` is not implemented; `runFusion` has no `AbortController`, so a cancelled fusion runs to completion. Scoped as a possible v1.1 addition.
 - **Sequential mode ≠ local-server VRAM management.** `executionMode:"sequential"` removes OpenFusion's *own* candidate concurrency; it does not manage the local model server's VRAM (Ollama `keep_alive`, llama.cpp offloading). A user can still OOM if their local server keeps models resident. Documented, not engineered.
+- **Feature 008's SDK handler override is version-coupled.** The `_resume_from` deferred-result protocol depends on replacing the SDK's `CallToolRequest` handler (see the SDK handler override note above + `src/fusion/resume-dispatch.ts` header). An `@modelcontextprotocol/sdk` upgrade that changes the handler's install timing, key, or the blocking-auto-poll behavior can silently disable the `_resume_from` path (non-Tasks clients fall back to the pre-008 blocking behavior). A dispatch canary test (`tests/resume-parallel.test.ts`) catches shape changes at test time.
 
 ## Conventions
 
@@ -134,21 +137,25 @@ Both judge steps use the **same** provider/model combo.
 
 <!-- SPECKIT START -->
 Active feature: **008-async-fusion-results** (Async Fusion Results via Deferred Retrieval).
-Stage: planned (Phase 0 + 1 complete); ready for `/speckit-tasks`.
+Stage: implemented (T001–T028 complete, 167 tests green); T029 (E1 end-to-end against a real non-Tasks client) deferred as manual validation.
 
 Working documents (read in order before implementing):
 - Current plan: specs/008-async-fusion-results/plan.md (tech context, constitution gate ✅ no violations, project structure)
 - Spec: specs/008-async-fusion-results/spec.md (3 user stories US1–US3, FR-001..015, SC-001..007)
-- Design depth: specs/008-async-fusion-results/research.md (R-001..R-009; R-001 is an EMPIRICAL GATE — verify before locking long-poll timing),
+- Design depth: specs/008-async-fusion-results/research.md (R-001..R-009; R-001 VERIFIED per-call),
   data-model.md (fusion_jobs table + status state machine; reference_id = activity_id; live progress ephemeral),
   contracts/resume-from.md (fusion tool _resume_from wire protocol + mode-aware kickoff/retrieval shapes),
   quickstart.md (T1–T14 + E1 — E1 re-scopes spec 005's never-run test to the _resume_from path)
 - Checklist: specs/008-async-fusion-results/checklists/requirements.md (all pass)
 
 Key decisions: deferred-result protocol for non-Tasks clients (codex/ZCode) — feature 005's Tasks path
-provably cannot help them (codex hardcodes task:None). `_resume_from` on the fusion tool; kickoff returns
-immediately, retrieval bounded-long-polls (~40s parallel) / ETA-guided (sequential). Durable (SQLite) for
-BOTH modes, live progress ephemeral for both (revises 005's non-durability for retrieval). reference_id =
-activity_id (collapse the three-way map). 005's Tasks path preserved as a sibling branch. R-001 gate
-(verify codex timeout is per-call, not session-level) MUST complete before FR-004's wait is locked.
+provably cannot help them (codex hardcodes task:None, and the SDK's `handleAutomaticTaskPolling` blocks
+non-Tasks calls before the handler can return deferred — the root cause 008 fixes). Resolution: a documented
+SDK handler override (`src/fusion/resume-dispatch.ts`) replaces the CallToolRequest handler post-registration,
+routes non-Tasks fusion calls to kickoff/retrieval, and delegates Tasks clients + other tools unchanged
+(FR-013 preserved by delegation). `_resume_from` on the fusion tool; kickoff returns ~1s, retrieval
+bounded-long-polls (45s parallel — sized so a ~90s fusion returns in ≤3 round-trips, SC-002) / ETA-guided
+(sequential). Durable (SQLite `fusion_jobs`) for BOTH modes, live progress ephemeral. reference_id =
+activity_id (collapse the three-way map). Startup sweep → interrupted; stalled circuit → error/stalled;
+write-late guard extends expires_at. 005's Tasks path preserved as a sibling. R-001 gate passed (per-call).
 <!-- SPECKIT END -->

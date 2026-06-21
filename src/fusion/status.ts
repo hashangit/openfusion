@@ -12,6 +12,9 @@ import type { ExecutionMode } from "../config/schema.js";
 
 export type RuntimeState = "idle" | "in-progress" | "queued";
 
+/** The current stage of a fusion (drives the phase-bar affordance). Same-process only. */
+export type FusionPhase = "fan-out" | "analysis" | "synthesis";
+
 export interface ActiveFusion {
   activityId: string;
   mode: ExecutionMode;
@@ -20,6 +23,8 @@ export interface ActiveFusion {
   candidateIndex?: number;
   /** Sequential: how many resolved. Parallel: how many responding so far. */
   candidatesDone?: number;
+  /** Current phase — same-process only; undefined for cross-process (DB-only) fusions. */
+  phase?: FusionPhase;
   /** Epoch ms — when the fusion entered the registry. */
   startedAt: number;
 }
@@ -41,15 +46,17 @@ class FusionStatusRegistry {
 
   /** Called at the top of runFusion, after the gate + activity row allocation. */
   enter(activityId: string, mode: ExecutionMode, candidateCount: number): void {
-    this.entries.set(activityId, { activityId, mode, candidateCount, startedAt: Date.now() });
+    // Every fusion starts in fan-out; `update({phase})` advances to analysis/synthesis.
+    this.entries.set(activityId, { activityId, mode, candidateCount, phase: "fan-out", startedAt: Date.now() });
   }
 
-  /** Per-candidate (serial) or once at fan-out start (parallel). No-op if unknown id. */
-  update(activityId: string, patch: Partial<Pick<RegistryEntry, "candidateIndex" | "candidatesDone">>): void {
+  /** Per-candidate (serial), per-phase, or once at fan-out start (parallel). No-op if unknown id. */
+  update(activityId: string, patch: Partial<Pick<RegistryEntry, "candidateIndex" | "candidatesDone" | "phase">>): void {
     const e = this.entries.get(activityId);
     if (!e) return;
     if (patch.candidateIndex !== undefined) e.candidateIndex = patch.candidateIndex;
     if (patch.candidatesDone !== undefined) e.candidatesDone = patch.candidatesDone;
+    if (patch.phase !== undefined) e.phase = patch.phase;
   }
 
   /**

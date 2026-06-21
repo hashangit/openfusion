@@ -107,6 +107,8 @@ export interface ActiveFusion {
   candidateIndex?: number;
   /** Sequential: how many resolved. Parallel: how many responding so far. */
   candidatesDone?: number;
+  /** Current phase — same-process only; undefined for cross-process (DB-only) fusions. */
+  phase?: "fan-out" | "analysis" | "synthesis";
   /** Epoch ms — when the fusion entered the registry. */
   startedAt: number;
 }

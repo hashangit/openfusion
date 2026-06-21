@@ -51,7 +51,7 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<{ ap
   app.use("/api/status", statusRouter());
   // /api/runtime is DISTINCT from /api/status (feature 007): status returns config/health
   // (dashboard + agent + CLI consumers); runtime returns ephemeral live-fusion state.
-  app.use("/api/runtime", runtimeRouter());
+  app.use("/api/runtime", runtimeRouter(db));
   app.use("/api/personas", personasRouter());
   // /api/health is a liveness ping (kept stable for back-compat) but now carries
   // version + configured so a single call tells you both "is it up" and "is it ready".

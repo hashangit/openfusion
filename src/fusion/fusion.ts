@@ -175,14 +175,22 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
       total_latency_ms: 0,
       persona: persona.id,
       persona_source: personaSource,
-      status: "error", // pessimistic default; updated on success/partial
-      error: "in-progress",
+      // While in flight: status 'running' (matches task-path allocateActivity convention)
+      // so the dashboard + the cross-process /api/runtime query (WHERE status='running') see
+      // the fusion as in-progress. Updated to success/partial/error on completion below.
+      status: "running",
     });
   } else {
-    // Pre-allocated row exists (task path); align candidate_count + judge fields so the
-    // dashboard shows correct metadata even if fan-out never completes.
+    // Pre-allocated row exists (task path); align candidate_count + judge/persona fields so
+    // the dashboard shows correct metadata even if fan-out never completes. allocateActivity
+    // (task-runner) doesn't resolve the judge/persona, so we fill them here — matching the
+    // blocking path's recordActivity above (symptom 1 fix: judge was missing for ZCode runs).
     updateActivity(input.db, activityId, {
       candidate_count: candidates.length,
+      judge_provider: judge.provider,
+      judge_model: judge.model,
+      persona: persona.id,
+      persona_source: personaSource,
     });
   }
 
@@ -261,6 +269,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   }
 
   report(1, 3, `${survivorCount} of ${candidates.length} candidates responded; analyzing…`);
+  fusionStatusRegistry.update(activityId, { phase: "analysis" });
 
   // --- Judge step 1: analysis ---
   const judgeModel = safeResolve(judge.provider, judge.model);
@@ -296,6 +305,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   }
 
   report(2, 3, "Analysis complete; synthesizing…");
+  fusionStatusRegistry.update(activityId, { phase: "synthesis" });
 
   // --- Judge step 2: synthesis ---
   const synth = await runSynthesis(judgeModel, input.prompt, candidateViews, analysis.value!, judgeApiKey, judgeTimeoutMs, personaPrompts.synthesis);

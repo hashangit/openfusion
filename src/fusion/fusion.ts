@@ -6,7 +6,9 @@ import type { RawConfig } from "../config/schema.js";
 import { isConfigured } from "../config/completeness.js";
 import { getKey } from "../config/secrets.js";
 import { resolveModel, type AnyModel } from "../providers/pi-ai-bridge.js";
-import { runWorker, type WorkerResult } from "./worker.js";
+import { runParallelFanout, runSequentialFanout } from "./fanout.js";
+import type { WorkerResult } from "./worker.js";
+import { fusionStatusRegistry } from "./status.js";
 import { resolvePersona } from "./personas.js";
 import { resolvePersonaWithPolicy, shouldEmitEvent, type PersonaEvent, type PersonaEventResult } from "./persona-policy.js";
 import { runAnalysis, runSynthesis, type CandidateView } from "./judge.js";
@@ -146,6 +148,12 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   const activityId = input.activityId ?? randomUUID();
   const startedAt = Date.now();
 
+  // Enter the live-status registry (feature 007). The try/finally below guarantees
+  // `leave` runs on EVERY terminal path — success, partial, error, or thrown exception
+  // (INV-3 — a stuck "in-progress" is the one bug that makes the status surface useless).
+  const executionMode = input.config.settings.executionMode ?? "parallel";
+  fusionStatusRegistry.enter(activityId, executionMode, candidates.length);
+  try {
   report(0, 3, `Fanning out to ${candidates.length} models…`);
 
   // Insert the activity row up-front so sub_calls can reference it (FK). It is finalized
@@ -167,33 +175,53 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
       total_latency_ms: 0,
       persona: persona.id,
       persona_source: personaSource,
-      status: "error", // pessimistic default; updated on success/partial
-      error: "in-progress",
+      // While in flight: status 'running' (matches task-path allocateActivity convention)
+      // so the dashboard + the cross-process /api/runtime query (WHERE status='running') see
+      // the fusion as in-progress. Updated to success/partial/error on completion below.
+      status: "running",
     });
   } else {
-    // Pre-allocated row exists (task path); align candidate_count + judge fields so the
-    // dashboard shows correct metadata even if fan-out never completes.
+    // Pre-allocated row exists (task path); align candidate_count + judge/persona fields so
+    // the dashboard shows correct metadata even if fan-out never completes. allocateActivity
+    // (task-runner) doesn't resolve the judge/persona, so we fill them here — matching the
+    // blocking path's recordActivity above (symptom 1 fix: judge was missing for ZCode runs).
     updateActivity(input.db, activityId, {
       candidate_count: candidates.length,
+      judge_provider: judge.provider,
+      judge_model: judge.model,
+      persona: persona.id,
+      persona_source: personaSource,
     });
   }
 
-  // --- Fan-out (Constitution III): parallel, per-worker timeout, Promise.allSettled ---
-  const workerResults = await Promise.all(
-    candidates.map((c) =>
-      runWorker({
-        slotId: c.id,
-        provider: c.provider,
-        modelId: c.model,
-        model: safeResolve(c.provider, c.model),
-        prompt: input.prompt,
-        context: input.context,
-        apiKey: getKey(c.provider, secretsPath, keyPath) ?? "",
-        timeoutMs: candidateTimeoutMs,
-        workerPrompt: personaPrompts.worker,
-      }),
-    ),
-  );
+  // --- Fan-out (Constitution III): parallel default; sequential opt-in (feature 007) ---
+  // Both modes build the same per-candidate worker inputs; only scheduling differs.
+  // Sequential is a user-opted alternative (Constitution III amendment) — the survivor
+  // gate + per-worker timeout/retry are identical in both modes. `executionMode` was read
+  // above (for the registry enter); reused here for the dispatch.
+  const workerCalls = candidates.map((c) => ({
+    slotId: c.id,
+    provider: c.provider,
+    modelId: c.model,
+    model: safeResolve(c.provider, c.model),
+    prompt: input.prompt,
+    context: input.context,
+    apiKey: getKey(c.provider, secretsPath, keyPath) ?? "",
+    timeoutMs: candidateTimeoutMs,
+    workerPrompt: personaPrompts.worker,
+  }));
+  const workerResults =
+    executionMode === "sequential"
+      ? await runSequentialFanout(workerCalls, {
+          report,
+          onUpdate: (candidateIndex, candidatesDone) =>
+            fusionStatusRegistry.update(activityId, { candidateIndex, candidatesDone }),
+        })
+      : await runParallelFanout(workerCalls, {
+          // Parallel: no candidateIndex (all race concurrently); just count responders as
+          // they land, in completion order, so the widget shows "X of N responding" rising.
+          onUpdate: (candidatesDone) => fusionStatusRegistry.update(activityId, { candidatesDone }),
+        });
 
   // Log each worker sub_call regardless of outcome (Constitution V).
   for (const w of workerResults) {
@@ -241,6 +269,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   }
 
   report(1, 3, `${survivorCount} of ${candidates.length} candidates responded; analyzing…`);
+  fusionStatusRegistry.update(activityId, { phase: "analysis" });
 
   // --- Judge step 1: analysis ---
   const judgeModel = safeResolve(judge.provider, judge.model);
@@ -276,6 +305,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   }
 
   report(2, 3, "Analysis complete; synthesizing…");
+  fusionStatusRegistry.update(activityId, { phase: "synthesis" });
 
   // --- Judge step 2: synthesis ---
   const synth = await runSynthesis(judgeModel, input.prompt, candidateViews, analysis.value!, judgeApiKey, judgeTimeoutMs, personaPrompts.synthesis);
@@ -312,6 +342,11 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
   });
 
   return { ok: true, answer: synth.value, activityId, status };
+  } finally {
+    // INV-3: every terminal path (the returns above + failWithJudgeError + any throw)
+    // flows through here. Idempotent — safe even if enter never matched.
+    fusionStatusRegistry.leave(activityId);
+  }
 }
 
 // --- helpers ---

@@ -154,6 +154,12 @@ export function updateActivity(db: DB, id: string, patch: Partial<ActivityRow>):
     "status",
     "error",
     "persona_source",
+    // Judge + persona metadata: the task path (ZCode) pre-allocates via allocateActivity
+    // WITHOUT these (it doesn't resolve the judge/persona until runFusion). runFusion's
+    // task-path branch updates them here so the dashboard shows judge/persona for both paths.
+    "judge_provider",
+    "judge_model",
+    "persona",
   ];
   const sets: string[] = [];
   const params: Record<string, unknown> = { id };
@@ -176,4 +182,29 @@ export function getActivity(db: DB, id: string): ActivityWithSubCalls | undefine
     .prepare("SELECT * FROM sub_calls WHERE activity_id = ? ORDER BY created_at ASC")
     .all(id) as (SubCallRow & { id: string })[];
   return { ...activity, sub_calls };
+}
+
+/**
+ * In-flight fusions (status='running'), newest first. Feature 007's live-status surface
+ * reads this as the cross-process floor: the `activities` table is shared across all
+ * openfusion processes (same OPENFUSION_HOME), so a dashboard process can see fusions
+ * running in *another* process — which the in-memory FusionStatusRegistry cannot.
+ * (research R-004 assumed one process; multi-client topologies break that assumption.)
+ * executionMode isn't persisted on the row, so the runtime route defaults it and lets the
+ * in-process registry override with the real mode when the fusion is same-process.
+ */
+export interface RunningActivity {
+  id: string;
+  candidate_count: number;
+  startedAt: number; // epoch ms, derived from created_at
+}
+export function getRunningActivities(db: DB): RunningActivity[] {
+  const rows = db
+    .prepare("SELECT id, candidate_count, created_at FROM activities WHERE status = 'running' ORDER BY created_at DESC")
+    .all() as { id: string; candidate_count: number; created_at: string }[];
+  return rows.map((r) => ({
+    id: r.id,
+    candidate_count: r.candidate_count,
+    startedAt: Date.parse(r.created_at),
+  }));
 }

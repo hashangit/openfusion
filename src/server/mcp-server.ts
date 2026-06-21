@@ -156,7 +156,12 @@ export function listPersonasToolHandler(config: {
   personas?: readonly { id: string; name: string; description?: string; builtin?: boolean }[];
   settings?: { activePersona?: string };
 }): { content: { type: "text"; text: string }[] } {
-  const personas = config.personas ?? BUILTIN_PERSONAS;
+  // Merge missing builtins into the stored list — a non-empty config.personas (v3 configs
+  // persist the builtins) would otherwise shadow a newly shipped builtin. Mirrors the
+  // REST `withBuiltins` path in server/api/personas.ts so MCP and UI agree (FR-001).
+  const stored = [...(config.personas ?? [])];
+  const storedIds = new Set(stored.map((p) => p.id));
+  const personas = [...stored, ...BUILTIN_PERSONAS.filter((b) => !storedIds.has(b.id))];
   const active = resolvePersona({
     personas: personas as never,
     activeId: config.settings?.activePersona,

@@ -141,6 +141,27 @@ Cite takes by index (Take 1, 2, ...). Focus on what distinguishes the recommenda
 
 States the recommendation up front, then the rationale tied to the consensus trade-offs. Resolve contradictions by pointing to the crux from the analysis. Incorporate the unique risks/insights; surface any blind-spot alternative worth a sanity check. Note what would change the recommendation. Do not invent constraints or facts not in the candidates.`,
   },
+  {
+    id: "architect",
+    name: "System Architect / Principal Engineer",
+    description: "Candidates counsel as principal engineers reading the whole application; judge consolidates holistic architectural guidance.",
+    builtin: true,
+    workerPrompt: `You are a principal system architect acting as an independent candidate in a fusion panel. You counsel on a proposed feature or plan by reading it against the whole application — every system, layer, and boundary provided — not just the change being made.
+
+Assess the plan holistically: how it fits or breaks the existing architecture, the cross-cutting concerns it touches, hidden coupling and blast radius, sequencing and migration risk, and what the plan doesn't account for. Surface the trade-offs and second-order effects, then give your concrete architectural recommendation with rationale. Prefer the simplest design that fits; push back when the plan adds complexity without justification. Do not call any tools.`,
+    analysisPrompt: `You are the ANALYSIS step of a fusion judge reconciling several architectural counsel takes. Call the "record_analysis" tool exactly once; do not write free text. Capture:
+
+- consensus: architectural risks or design points every take agreed on
+- contradictions: where takes diverge on the recommended approach or risk weighting — identify the crux (the assumption that flips the decision)
+- partialCoverage: systems, layers, or constraints only some takes examined
+- uniqueInsights: cross-cutting effects, coupling, or sequencing risks only one surfaced
+- blindSpots: whole systems, failure modes, or migration/ordering concerns no take addressed
+
+Cite takes by index (Take 1, 2, ...). Focus on how the plan interacts with the rest of the application, not on line-level correctness.`,
+    synthesisPrompt: `You are the SYNTHESIS step of a fusion judge writing the final architectural counsel. Produce one decisive consultation that:
+
+States your overall assessment of the plan up front, then the architectural rationale tied to the consensus risks. Resolve contradictions by pointing to the crux from the analysis. Cover the cross-system interactions, blast radius, and sequencing the takes raised; flag any blind-spot system or second-order effect that deserves a sanity check. Note what would change your recommendation. Do not invent systems, constraints, or facts not in the candidates or the provided application context.`,
+  },
 ];
 
 /** Look up a builtin by id (for resets). */

@@ -14,6 +14,7 @@ import { testRouter } from "./api/test.js";
 import { statsRouter } from "./api/stats.js";
 import { activityRouter } from "./api/activity.js";
 import { statusRouter } from "./api/status.js";
+import { runtimeRouter } from "./api/runtime.js";
 import { personasRouter } from "./api/personas.js";
 import { loadConfig } from "../config/store.js";
 import { isConfigured } from "../config/completeness.js";
@@ -48,6 +49,9 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<{ ap
   app.use("/api/stats", statsRouter(db));
   app.use("/api/activity", activityRouter(db));
   app.use("/api/status", statusRouter());
+  // /api/runtime is DISTINCT from /api/status (feature 007): status returns config/health
+  // (dashboard + agent + CLI consumers); runtime returns ephemeral live-fusion state.
+  app.use("/api/runtime", runtimeRouter(db));
   app.use("/api/personas", personasRouter());
   // /api/health is a liveness ping (kept stable for back-compat) but now carries
   // version + configured so a single call tells you both "is it up" and "is it ready".

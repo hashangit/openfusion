@@ -113,10 +113,12 @@ Both judge steps use the **same** provider/model combo.
 - `fusion`'s optional `persona` arg — agents discover via `list_personas`, then pass `persona:<id>`. Resolution is audited on `activities.persona_source` (`active` | `override` | `strict-enforced` | `invalid-fallback`).
 - `config.settings.personaPolicy` (`strict` | `allow-override`, default `allow-override`) — gates MCP-client overrides only (UI fusions exempt via `FusionInput.source:"ui"`). Strict = warn + continue (never block): the active persona runs, a `notifications/message` warning fires, and if the client advertises `elicitation.form` the user is asked once per session to relax (`SessionOverrideState` dedupes concurrent callers). Invalid ids never error — they fall back to active with `persona_source="invalid-fallback"`. Enforcement lives in `runFusion` (single site, both entry paths). Details in `specs/006-persona-discovery/`.
 
+**Sequential fan-out (feature 007).** `config.settings.executionMode` (`parallel` default | `sequential`) governs candidate scheduling. Parallel is the unchanged `Promise.all` fan-out (optimal for cloud). Sequential runs candidates **one at a time** in slot order — an opt-in for low-VRAM local setups (Ollama/llama.cpp) where simultaneous model loads OOM. A serial time budget (`computeSerialBudgetMs = 3min × N + 6min`, `src/fusion/fanout.ts`) gates *launching* the next candidate (never aborts the in-flight one — no `AbortController`); on exhaustion the run proceeds with survivors so far (same ≥2 gate). The per-worker timeout + 3-retry machinery is identical in both modes. Dispatch lives in `runFusion` (single site, both entry paths). A live status surface (`GET /api/runtime` — distinct from `/api/status`; `src/fusion/status.ts` registry, `enter`/`update`/`finally leave` in `runFusion`) feeds a Dashboard widget. Details in `specs/007-sequential-processing/`.
 **Known limitations (v1, documented):**
 - **Tasks are non-durable.** `InMemoryTaskStore` + a module-level `Map<taskId, activityId>` live in-process; a restart loses in-flight tasks. The SQLite `activities` row is the durable record (may be left at `status='running'` on crash). Task IDs are ephemeral — clients must not persist them across sessions.
 - **Event-loop blocking under concurrent load.** `better-sqlite3` is synchronous; a long fusion can delay a second client's calls and the Express dashboard. Tolerable for a single-user local tool (Constitution VII); revisit if multi-user.
 - **No cancellation wiring.** SEP-1686 `tasks/cancel` is not implemented; `runFusion` has no `AbortController`, so a cancelled fusion runs to completion. Scoped as a possible v1.1 addition.
+- **Sequential mode ≠ local-server VRAM management.** `executionMode:"sequential"` removes OpenFusion's *own* candidate concurrency; it does not manage the local model server's VRAM (Ollama `keep_alive`, llama.cpp offloading). A user can still OOM if their local server keeps models resident. Documented, not engineered.
 
 ## Conventions
 
@@ -131,16 +133,22 @@ Both judge steps use the **same** provider/model combo.
 - **Pin `@earendil-works/pi-ai` exactly** — it's pre-1.0; `save-exact`. Do NOT use the deprecated `@mariozechner/pi-ai`.
 
 <!-- SPECKIT START -->
-Active feature: **006-persona-discovery** (Persona Discovery & Policy — MCP).
-Stage: tasks generated, ready to implement.
+Active feature: **008-async-fusion-results** (Async Fusion Results via Deferred Retrieval).
+Stage: planned (Phase 0 + 1 complete); ready for `/speckit-tasks`.
 
 Working documents (read in order before implementing):
-- Current plan: specs/006-persona-discovery/plan.md (tech context, constitution gate, project structure)
-- Task list: specs/006-persona-discovery/tasks.md (45 ordered tasks T001–T045, MVP = Phases 1→2→3)
-- Spec: specs/006-persona-discovery/spec.md (4 user stories, FR-001..016, SC-001..009)
-- Design depth: specs/006-persona-discovery/research.md (R-001..R-011 locked decisions),
-  data-model.md (entities + migration 004), contracts/mcp-persona-tools.md (tool/notification/elicitation shapes),
-  quickstart.md (T1–T11 + E1–E2 validation scenarios)
+- Current plan: specs/008-async-fusion-results/plan.md (tech context, constitution gate ✅ no violations, project structure)
+- Spec: specs/008-async-fusion-results/spec.md (3 user stories US1–US3, FR-001..015, SC-001..007)
+- Design depth: specs/008-async-fusion-results/research.md (R-001..R-009; R-001 is an EMPIRICAL GATE — verify before locking long-poll timing),
+  data-model.md (fusion_jobs table + status state machine; reference_id = activity_id; live progress ephemeral),
+  contracts/resume-from.md (fusion tool _resume_from wire protocol + mode-aware kickoff/retrieval shapes),
+  quickstart.md (T1–T14 + E1 — E1 re-scopes spec 005's never-run test to the _resume_from path)
+- Checklist: specs/008-async-fusion-results/checklists/requirements.md (all pass)
 
-Implement MVP-first: Setup → Foundational → User Story 1, then validate before continuing.
+Key decisions: deferred-result protocol for non-Tasks clients (codex/ZCode) — feature 005's Tasks path
+provably cannot help them (codex hardcodes task:None). `_resume_from` on the fusion tool; kickoff returns
+immediately, retrieval bounded-long-polls (~40s parallel) / ETA-guided (sequential). Durable (SQLite) for
+BOTH modes, live progress ephemeral for both (revises 005's non-durability for retrieval). reference_id =
+activity_id (collapse the three-way map). 005's Tasks path preserved as a sibling branch. R-001 gate
+(verify codex timeout is per-call, not session-level) MUST complete before FR-004's wait is locked.
 <!-- SPECKIT END -->

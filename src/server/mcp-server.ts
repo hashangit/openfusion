@@ -10,6 +10,8 @@ import type {
 import { z } from "zod";
 import { runFusion } from "../fusion/fusion.js";
 import { startDetachedFusion, type TaskHandlerExtra } from "../fusion/task-runner.js";
+import { installResumeDispatch } from "../fusion/resume-dispatch.js";
+import { sweepInterrupted } from "../fusion/resume-store.js";
 import { resolvePersona, toLite, BUILTIN_PERSONAS, type PersonaLite } from "../fusion/personas.js";
 import { loadConfig, emptyConfig } from "../config/store.js";
 import { openDatabase } from "../store/db.js";
@@ -33,7 +35,11 @@ export interface McpServerOptions {
 
 /** The fusion tool's input schema (Zod). Exported so callers/tests can validate inputs. */
 export const fusionInputSchema = {
-  prompt: z.string().describe("The prompt to fuse across candidate models"),
+  // Feature 008: prompt is optional when _resume_from is present (FR-002 — the agent must
+  // NOT resend the full prompt on every poll). The kickoff branch validates prompt presence
+  // at runtime and returns an error shape if missing, preserving today's "prompt required"
+  // contract for new fusions. See contracts/resume-from.md.
+  prompt: z.string().optional().describe("The prompt to fuse across candidate models"),
   context: z
     .string()
     .optional()
@@ -45,6 +51,12 @@ export const fusionInputSchema = {
     .optional()
     .describe(
       "To see available personas, call `list_personas`; pass `persona=<id>` to override the active one (subject to the user's persona policy in the dashboard). Defaults to the active persona.",
+    ),
+  _resume_from: z
+    .string()
+    .optional()
+    .describe(
+      "Retrieve the result of a previously-started fusion. Pass the reference_id from a prior 'processing' result. When present, prompt/context/persona are ignored.",
     ),
 };
 
@@ -59,10 +71,10 @@ export const PRE_006_FUSION_DESCRIPTION =
 /**
  * The post-006 fusion tool description: persona enumeration removed (agents discover via
  * `list_personas`), replaced with a concise discovery nudge. Strictly shorter than
- * PRE_006_FUSION_DESCRIPTION (SC-006).
+ * PRE_006_FUSION_DESCRIPTION (SC-006). Feature 008 appends one line on `_resume_from`.
  */
 export const FUSION_DESCRIPTION =
-  "Fan a prompt out to 2-5 candidate models, run a two-step judge (analysis then synthesis), and return one consolidated answer. Slower and costlier than a single model call (2-3x). Use for complex reasoning, deep research, cross-model verification, or high-stakes answers where consensus adds value. Do NOT use for routine lookups, single-turn Q&A, or trivial tasks. Call `list_personas` first; pass `persona=<id>` to override.";
+  "Fan a prompt out to 2-5 candidate models, run a two-step judge (analysis then synthesis), and return one consolidated answer. Slower and costlier than a single model call (2-3x). Use for complex reasoning, deep research, cross-model verification, or high-stakes answers where consensus adds value. Do NOT use for routine lookups, single-turn Q&A, or trivial tasks. Call `list_personas` first; pass `persona=<id>` to override. Results may return with status 'processing' — re-call with `_resume_from: <reference_id>` to retrieve.";
 
 /**
  * The MCP `extra` shape we depend on (progress token + sendNotification).
@@ -181,6 +193,22 @@ export async function createMcpServer(options: McpServerOptions = {}): Promise<M
   if (!options.db) ensureHome(); // make sure ~/.openfusion exists before opening the DB
   const db = options.db ?? openDatabase(paths.db());
 
+  // Feature 008 (T018): startup sweep — reclassify every processing fusion_jobs row from a
+  // PREVIOUS process as interrupted (R-007, FR-009). MUST run BEFORE installResumeDispatch +
+  // server.connect (B3), or a post-restart retrieval can race a stale processing row and
+  // bounded-long-poll a dead job. The detached runner died with the previous process; the
+  // durable row is the orphan we're cleaning up. Safe to call on a fresh DB (no rows → 0).
+  try {
+    const interrupted = sweepInterrupted(db, new Date().toISOString());
+    if (interrupted > 0) {
+      console.error(`[openfusion] startup sweep: ${interrupted} in-flight fusion(s) from a previous session marked interrupted.`);
+    }
+  } catch (e) {
+    // Non-fatal: a sweep failure leaves stale processing rows, which the stalled circuit
+    // (FR-012) or TTL eviction (FR-008) will eventually clean up. Log and continue booting.
+    console.error(`[openfusion] startup sweep failed (continuing): ${(e as Error).message}`);
+  }
+
   // Tool: fusion — task-capable (SEP-1686). taskSupport:'optional' means:
   //   - Tasks-aware client (sends `task` param) → CreateTaskResult returned synchronously,
   //     fusion runs detached, client fetches via tasks/result. No client-side timeout.
@@ -211,7 +239,7 @@ export async function createMcpServer(options: McpServerOptions = {}): Promise<M
           sendNotification: extra.sendNotification as ToolExtra["sendNotification"],
           elicitRelaxStrict: makeElicitRelaxStrict(server),
         };
-        const task = await startDetachedFusion(
+        const { task } = await startDetachedFusion(
           {
             prompt: args.prompt,
             context: args.context,
@@ -257,6 +285,16 @@ export async function createMcpServer(options: McpServerOptions = {}): Promise<M
     {},
     async () => openDashboardToolHandler(),
   );
+
+  // Feature 008 (T011a): install the `_resume_from` dispatch wrapper OVER the SDK's installed
+  // CallToolRequest handler. This MUST run AFTER the fusion tool is registered (so the SDK's
+  // handler exists to capture) and BEFORE server.connect returns (so no client call can race
+  // the replacement). The wrapper intercepts non-Tasks fusion calls and routes them to the
+  // kickoff/retrieval branches; Tasks clients + all other tools delegate to the SDK handler
+  // unchanged (FR-013 preserved by delegation, not reimplementation).
+  //
+  // ⚠️ SDK COUPLING — see src/fusion/resume-dispatch.ts header before upgrading the SDK.
+  installResumeDispatch(server, { db, openBrowserOnNeedsConfig: options.openBrowserOnNeedsConfig });
 
   return server;
 }

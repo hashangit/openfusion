@@ -64,6 +64,18 @@ export interface FusionResult {
   needsConfig?: boolean;
   activityId?: string;
   status: "success" | "partial" | "error";
+  /**
+   * Feature 008 (FR-014): a structural failure kind for !ok results, so the durable
+   * job-state can distinguish judge-failure-after-candidates-complete from all-candidates-
+   * failed. ADDITIVE — existing callers (the blocking MCP path, the 005 Tasks path, the UI
+   * path) ignore this field; only the detached runner's terminal handler reads it (maps to
+   * fusion_jobs.error_kind via markTerminal). Absent for ok:true results.
+   *
+   *   "no-survivors" — <2 candidates succeeded (the standard fusion gate).
+   *   "judge-failed" — ≥2 survivors but runAnalysis/runSynthesis threw.
+   *   "internal"     — an unexpected throw in the outer catch (defensive; runFusion never throws).
+   */
+  errorKind?: "no-survivors" | "judge-failed" | "internal";
 }
 
 /** Run a fusion end-to-end. Never throws; failures are returned as FusionResult. */
@@ -80,6 +92,8 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
       error: `OpenFusion isn't configured: ${gate.reasons.join("; ")}. Open http://localhost:9077 (or run \`openfusion configure\`) to set up candidates, a judge, and API keys.`,
       needsConfig: true,
       status: "error",
+      // A config-gate failure is a setup problem, not a fusion failure kind. Leave errorKind
+      // absent — it's neither no-survivors nor judge-failed. Callers route on needsConfig.
     };
   }
 
@@ -264,6 +278,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
       ok: false,
       error: `Only ${survivorCount} of ${candidates.length} candidates succeeded (minimum 2 required). Failed: ${failed || "(none)"}. Configure more/faster candidates or raise the timeout.`,
       status: "error",
+      errorKind: "no-survivors", // FR-014: distinct from judge-failed (candidates failed, not the judge)
       activityId,
     };
   }
@@ -392,6 +407,7 @@ function failWithJudgeError(
     ok: false,
     error: `Judge failed during ${step}: ${detail ?? "(no detail)"}. ${survivorCount} candidate responses were collected; see the dashboard.`,
     status: "error",
+    errorKind: "judge-failed", // FR-014: candidates succeeded (≥2), the judge is what failed
     activityId,
   };
 }

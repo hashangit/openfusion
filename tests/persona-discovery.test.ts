@@ -116,6 +116,28 @@ describe("T015 — list_personas shape (FR-001, FR-002, FR-016, SC-001)", () => 
     expect(parsed.find((e) => e.active)?.id).toBe("generalist");
   });
 
+  it("FR-001: merges a newly-shipped builtin into a persisted persona list (no shadowing)", () => {
+    // Regression: a v3 config persists its persona list on disk. The handler used to do
+    // `config.personas ?? BUILTIN_PERSONAS` (fallback only), so a stored list missing a
+    // newly-shipped builtin would shadow it — list_personas would never show the new one.
+    // The handler must merge missing builtins, mirroring the REST withBuiltins() path.
+    const staleStoredList = BUILTIN_PERSONAS.filter((p) => p.id !== "architect");
+    expect(staleStoredList.length).toBe(BUILTIN_PERSONAS.length - 1); // simulates a pre-architect config
+
+    const res = listPersonasToolHandler({
+      personas: staleStoredList,
+      settings: { activePersona: "generalist" },
+    });
+    const parsed = JSON.parse(res.content[0].text) as { id: string; builtin: boolean }[];
+
+    // The missing builtin is surfaced, not shadowed.
+    expect(parsed.map((p) => p.id)).toContain("architect");
+    // No duplicates of anything in the stored list.
+    expect(parsed.length).toBe(BUILTIN_PERSONAS.length);
+    // Exactly one active.
+    expect((JSON.parse(res.content[0].text) as { active: boolean }[]).filter((e) => e.active).length).toBe(1);
+  });
+
   it("SC-006: fusion description trimmed — shorter + no inline persona enumeration", () => {
     // SC-006: the new description is strictly shorter than the pre-006 one.
     expect(FUSION_DESCRIPTION.length).toBeLessThan(PRE_006_FUSION_DESCRIPTION.length);

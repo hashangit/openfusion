@@ -19,14 +19,17 @@ export function GenerationText({ text }: { text: string }) {
     }
   };
   return (
-    <div className="relative">
-      <button
-        className={`btn-icon absolute right-1 top-1 ${copied ? "copied" : ""}`}
-        onClick={() => void copy()}
-        title="Copy generation"
-      >
-        {copied ? "✓" : "Copy"}
-      </button>
+    <div>
+      <div className="mb-1 flex justify-end">
+        <button
+          className={`btn-icon ${copied ? "copied" : ""}`}
+          onClick={() => void copy()}
+          title={copied ? "Copied" : "Copy generation"}
+          aria-label="Copy generation"
+        >
+          {copied ? "✓" : "⧉"}
+        </button>
+      </div>
       <div className="generation">{renderMarkdown(text)}</div>
     </div>
   );

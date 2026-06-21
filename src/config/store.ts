@@ -29,6 +29,8 @@ export function loadConfig(path = paths.config()): RawConfig {
  * Migrations run on every load; idempotent for current-version files.
  *  - v1 -> v2: single `judge` -> `judges[]`; backfill candidate.enabled.
  *  - v2 -> v3: inject builtin personas if `personas` absent/empty; set activePersona.
+ *  - v3 -> v4: inject personaPolicy default if absent (feature 006).
+ *  - v4 -> v5: inject executionMode default if absent (feature 007).
  * A file with a stray `judge` key from a downgrade is tolerated (ignored).
  */
 export function migrate(raw: unknown): unknown {
@@ -72,12 +74,38 @@ export function migrate(raw: unknown): unknown {
   }
   if (migrated && migratedTo < 3) migratedTo = 3;
 
+  // v3 -> v4: inject personaPolicy default if absent (feature 006).
+  // Old files (or freshly-migrated v3 files) lack this field; Zod would also default it,
+  // but injecting here keeps the on-disk file explicit + bumps the version stamp.
+  const settingsV4 = (out.settings ?? {}) as Record<string, unknown>;
+  if (!settingsV4.personaPolicy) {
+    settingsV4.personaPolicy = "allow-override";
+    out.settings = settingsV4;
+    migrated = true;
+  }
+  if (migrated && migratedTo < 4) migratedTo = 4;
+
+  // v4 -> v5: inject executionMode default if absent (feature 007).
+  // Same rationale as personaPolicy: Zod defaults it too, but injecting keeps the file
+  // explicit + bumps the version stamp. Belt-and-suspenders (research R-007).
+  const settingsV5 = (out.settings ?? {}) as Record<string, unknown>;
+  if (!settingsV5.executionMode) {
+    settingsV5.executionMode = "parallel";
+    out.settings = settingsV5;
+    migrated = true;
+  }
+  if (migrated && migratedTo < 5) migratedTo = 5;
+
   if (migrated) {
     out.version = migratedTo;
     const note =
-      migratedTo === 3
-        ? "config upgraded (personas added + activePersona set)"
-        : "config upgraded from v1 → v2 (judge→judges, enabled flags)";
+      migratedTo === 5
+        ? "config upgraded (executionMode added)"
+        : migratedTo === 4
+          ? "config upgraded (personaPolicy added)"
+          : migratedTo === 3
+            ? "config upgraded (personas added + activePersona set)"
+            : "config upgraded from v1 → v2 (judge→judges, enabled flags)";
     console.error(`OpenFusion: ${note}. Re-save via the dashboard to persist.`);
   }
   return out;

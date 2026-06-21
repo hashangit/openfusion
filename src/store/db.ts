@@ -90,6 +90,41 @@ const MIGRATIONS: { id: string; sql: string }[] = [
       ALTER TABLE activities ADD COLUMN persona TEXT;
     `,
   },
+  {
+    id: "004_add_persona_source",
+    sql: `
+      ALTER TABLE activities ADD COLUMN persona_source TEXT;
+    `,
+  },
+  {
+    // Feature 008 — durable job-state for the `_resume_from` deferred-result path.
+    // One row per deferred fusion, keyed by the activity id (= the reference id, INV-2).
+    // Additive (CREATE TABLE IF NOT EXISTS); no change to activities/sub_calls. The FK
+    // keeps this row joinable with the observability record without coupling concerns.
+    // See specs/008-async-fusion-results/data-model.md.
+    id: "005_fusion_jobs",
+    sql: `
+      CREATE TABLE IF NOT EXISTS fusion_jobs (
+        activity_id      TEXT    PRIMARY KEY,
+        status           TEXT    NOT NULL,              -- processing | completed | interrupted | expired | error
+        execution_mode   TEXT    NOT NULL,              -- parallel | sequential (snapshot at kickoff)
+        result           TEXT,                          -- synthesized answer text; NULL until completed (FR-007)
+        result_is_error  INTEGER NOT NULL DEFAULT 0,    -- 1 if result is an error message (status='error'); distinguishes error-vs-answer (FR-014)
+        error_kind       TEXT,                          -- judge-failed | no-survivors | stalled | internal; NULL unless status='error' (FR-014)
+        created_at       TEXT    NOT NULL,              -- ISO timestamp; set at kickoff
+        completed_at     TEXT,                          -- ISO timestamp; set on transition to terminal
+        expires_at       TEXT    NOT NULL,              -- ISO timestamp; created_at + TTL. Extended while 'processing' (write-late guard, FR-011)
+        last_progress_at TEXT,                          -- ISO timestamp; drives the stalled circuit (FR-012)
+        stall_threshold_ms INTEGER NOT NULL DEFAULT(300000), -- ms; a processing row whose last_progress_at is older than this is reclassified stalled. Computed at kickoff from workerTimeoutMs × retries (scrutinize fix — accounts for the legitimate progress gap between callbacks in BOTH modes)
+        eta_ms           INTEGER,                       -- computed ETA in ms; NULL for parallel mode (F7); sequential uses computeSerialBudgetMs
+        retrieved_at     TEXT,                          -- ISO timestamp of the first _resume_from that returned a terminal result; NULL until then (F3)
+        FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_fusion_jobs_status    ON fusion_jobs(status);
+      CREATE INDEX IF NOT EXISTS idx_fusion_jobs_expires   ON fusion_jobs(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_fusion_jobs_completed ON fusion_jobs(completed_at);
+    `,
+  },
 ];
 
 function migrate(db: DB): void {

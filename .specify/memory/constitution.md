@@ -20,6 +20,8 @@ This split exists because OpenRouter's data shows ~3/4 of the performance lift c
 
 Fan-out is parallel via `Promise.allSettled` with a per-call timeout (default 5 min) that resets on each of up to 3 retry attempts; the call proceeds with survivors and errors only when fewer than **2** candidates succeed. The slowest worker must not sink the call. Total wall-clock should stay under typical client tool-call ceilings (~4 min on some clients); users on those clients can lower `settings.workerTimeoutMs`. Progress is reported at each stage via `notifications/progress` (best-effort; correctness never depends on it).
 
+**Sequential mode (opt-in alternative, feature 007).** Users on low-VRAM machines running local models may set `settings.executionMode = "sequential"`, in which case candidates run **one at a time** in slot order rather than in parallel. This is a user-opted alternative to the parallel **default**, which is preserved unchanged. The resilience guarantees above apply identically in sequential mode: the per-call timeout + up-to-3-retry machinery is unchanged per candidate, the call proceeds with survivors, and it errors only when fewer than 2 candidates succeed. A sequential run is additionally bounded by a serial time budget that gates *launching* the next candidate (not aborting the in-flight one); when the budget is exhausted, the call proceeds with the survivors collected so far, subject to the same ≥2 gate. OpenFusion does not manage the local model server's own VRAM (Ollama keep-alive, llama.cpp offloading) — sequential mode removes OpenFusion's *own* candidate concurrency only.
+
 ### IV. Secrets Are Encrypted at Rest
 
 Provider API keys live **only** in `secrets.enc`, encrypted with AES-256-GCM using a machine-bound `master.key` (`chmod 600`). Keys are **never logged, never returned unmasked** from any API (the secrets endpoint returns masked presence only). The dashboard and UI server bind to `127.0.0.1` only — never `0.0.0.0`.
@@ -57,4 +59,4 @@ One Node process: stdio MCP transport + Express UI server coexisting; stdio only
 
 This constitution supersedes all other practices for OpenFusion. Any change violating a NON-NEGOTIABLE principle (I) requires an explicit, documented justification. Amendments require a documented rationale and migration plan. Complexity beyond these principles must be justified; when in doubt, refer to `AGENTS.md` and `ARCHITECTURE.md`.
 
-**Version**: 1.0.0 | **Ratified**: 2026-06-15 | **Last Amended**: 2026-06-15
+**Version**: 1.0.0 | **Ratified**: 2026-06-15 | **Last Amended**: 2026-06-19 (Principle III — sequential mode opt-in alternative, feature 007)

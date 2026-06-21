@@ -62,15 +62,26 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
-        {config && (
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-medium ${
-              config.configured ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"
-            }`}
+        <div className="flex items-center gap-3">
+          <a
+            href="https://www.paypal.com/ncp/payment/HR7GJ2RV7FFW6"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-full bg-pink-500/20 px-3 py-1 text-xs font-medium text-pink-300 transition hover:bg-pink-500/30"
+            title="Support OpenFusion"
           >
-            {config.configured ? "● Configured" : "○ Needs setup"}
-          </span>
-        )}
+            ♥ Donate
+          </a>
+          {config && (
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                config.configured ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"
+              }`}
+            >
+              {config.configured ? "● Configured" : "○ Needs setup"}
+            </span>
+          )}
+        </div>
       </header>
 
       {error && (

@@ -14,7 +14,7 @@ export interface AppConfig {
   version: number;
   candidates: CandidateSlot[];
   judges: JudgeConfig[];
-  settings: { workerTimeoutMs: number; uiPort: number; bind: string; benchmarkMode: boolean; activePersona: string };
+  settings: { workerTimeoutMs: number; uiPort: number; bind: string; benchmarkMode: boolean; activePersona: string; executionMode: "parallel" | "sequential" };
   configured: boolean;
 }
 
@@ -76,6 +76,13 @@ export interface Activity {
   total_latency_ms: number;
   status: string;
   error?: string | null;
+  /** Persona id/name used for this fusion (null for pre-0.2.1 fusions). */
+  persona?: string | null;
+  /**
+   * HOW the persona was chosen (feature 006; null for pre-0.3.0 fusions):
+   * active | override | strict-enforced | invalid-fallback. Rendered as a chip suffix.
+   */
+  persona_source?: string | null;
   sub_calls?: SubCall[];
 }
 export interface Stats {
@@ -89,6 +96,25 @@ export interface Stats {
   costByModel: { model: string; cost: number }[];
   tokensByModel: { model: string; tokens: number }[];
   fusionsByDay: { day: string; count: number }[];
+}
+
+/** Live fusion-engine status (feature 007, GET /api/runtime — distinct from /api/status). */
+export interface ActiveFusion {
+  activityId: string;
+  mode: "parallel" | "sequential";
+  candidateCount: number;
+  /** Sequential only: which candidate is currently running (1-indexed). */
+  candidateIndex?: number;
+  /** Sequential: how many resolved. Parallel: how many responding so far. */
+  candidatesDone?: number;
+  /** Current phase — same-process only; undefined for cross-process (DB-only) fusions. */
+  phase?: "fan-out" | "analysis" | "synthesis";
+  /** Epoch ms — when the fusion entered the registry. */
+  startedAt: number;
+}
+export interface FusionRuntimeStatus {
+  state: "idle" | "in-progress" | "queued";
+  fusions: ActiveFusion[];
 }
 
 async function getJSON<T>(url: string): Promise<T> {
@@ -121,6 +147,8 @@ export const api = {
     const q = filters ? "?" + new URLSearchParams(filters).toString() : "";
     return getJSON<Stats>(`/api/stats${q}`);
   },
+  /** Live fusion-engine status (feature 007). Polled by the Dashboard status widget. */
+  getStatus: () => getJSON<FusionRuntimeStatus>("/api/runtime"),
   getActivity: (opts: { limit?: number; offset?: number } = {}) => {
     const q = new URLSearchParams({
       limit: String(opts.limit ?? 25),
@@ -131,7 +159,7 @@ export const api = {
     );
   },
   getActivityDetail: (id: string) => getJSON<Activity>(`/api/activity/${id}`),
-  getPersonas: () => getJSON<{ personas: Persona[]; activePersona: string }>("/api/personas"),
+  getPersonas: () => getJSON<{ personas: Persona[]; activePersona: string; personaPolicy: "strict" | "allow-override" }>("/api/personas"),
   createPersona: (p: Omit<Persona, "id">) => sendJSON<Persona>("POST", "/api/personas", p),
   updatePersona: (id: string, patch: Partial<Persona> | { reset: true }) =>
     sendJSON<Persona>("PUT", `/api/personas/${encodeURIComponent(id)}`, patch),

@@ -53,6 +53,43 @@ A trace proves capability; a harness proves behavior. Record both in this file (
 
 ---
 
+## R-001b — ZCode task-capability + orphan/timeout root-cause framing (OPEN — verify at implementation)
+
+**Status**: reference note from the 007 debugging session. Not a gate; the 008 design holds either way. **Verify before locking US1's client examples.**
+
+During 007 debugging (see the 007 follow-up commit `e610394` message + `postmortem.md`), we traced why the dashboard showed inconsistent activity metadata between MCP clients and landed on discussion points that bear directly on 008. Recording them here so the 008 implementer has the context without re-deriving it.
+
+### (a) Is ZCode a Tasks-aware or non-Tasks client? — UNVERIFIED
+
+008's US1 frames its audience as "codex **or ZCode**" (non-Tasks clients). That framing rests on the assumption ZCode behaves like codex (hardcodes `task: None`). **This was not directly verified** during 007 — it was inferred, ambiguously, from indirect signals:
+
+- **DB-row shape evidence (indirect, contradictory):** a ZCode run (`327bfb78`) lacked `judge_model`/`persona` up front (the `allocateActivity`/task-runner signature), while a Claude Code run (`833592bd`) had them (the `recordActivity`/blocking-path signature). Taken at face value this says ZCode = task path, Claude Code = blocking path.
+- **But the routing code says otherwise:** `registerToolTask` with `taskSupport:"optional"` (`mcp-server.ts:189-194`) routes **both** Tasks-aware and non-Tasks clients through the same `createTask` handler — non-Tasks clients get SDK auto-polling of that handler. So "hit `createTask`" is **not** proof of Tasks-awareness; both kinds do. The DB-shape signal therefore may not distinguish the two clients the way the 007 debug initially read it.
+
+We flip-flopped on the ZCode path three times during debugging — the tell that we were reasoning about SDK internals we hadn't observed directly. **Resolution deferred** because we couldn't test ZCode against the 007 fixes (the published `openfusion-mcp` package predates them; ZCode's long-lived process loaded stale code). Once 007 is republished and ZCode's openfusion process is restarted, **verify directly**: log `params.task` (and whether `createTask`'s auto-poll vs direct route fired) for one fusion each from ZCode and Claude Code, then correct US1's client list if ZCode turns out to be Tasks-aware.
+
+**Why it doesn't block 008's design:** `_resume_from` is needed for codex regardless (codex's `task: None` is source-verified, R-001). If ZCode is also non-Tasks, US1's framing is correct as written. If ZCode is Tasks-aware, it keeps using the 005 path and US1's examples narrow to codex — the mechanism is unchanged. Either way 008 ships.
+
+### (b) The orphaned-row cause is non-durable task state — 008's R-002 is the fix, not a heartbeat/sweep
+
+The 007 orphan (`e34df6af`, `status='running'`, `0ms`, abandoned when a ZCode session ended mid-fusion) prompted a "fix the cause" discussion. Three options were weighed:
+
+1. **Startup sweep of stale `running` rows** — rejected as **unsafe in this project's real topology**: multiple openfusion processes share one `OPENFUSION_HOME` (one DB), so a fresh process can't tell its own in-flight fusions from another process's. A naive sweep would mark another process's genuinely-running fusion as errored.
+2. **Heartbeat + sweep (PID-tagged)** — rejected as **cosmetic-only**: it stops the dashboard from lying about dead work, but recovers nothing. Once the owning process is dead, the task id is gone (`InMemoryTaskStore` is non-durable), so no client can ever retrieve the result by id. A tidier zombie is still a zombie.
+3. **Durable result store (008's R-002)** — **the actual fix.** Persisting `fusion_jobs.{status, result}` to SQLite means a completed fusion's answer survives process death and stays retrievable by its (activity) id. This is why 008 chose durability for **both** modes, not a per-mode hybrid.
+
+The key reframing from the discussion: **orphaning is not a recoverability bug, it's a garbage-in-dashboard bug** — and the real "lost work" cause is the non-durable task store (task ids vanish on restart), which only 008's durability addresses. A heartbeat/sweep would be a worthwhile *dashboard-hygiene* addition later, but it is not the cause-fix and should not be mistaken for one.
+
+### (c) Cross-process dashboard reality (informs 008's progress surface)
+
+007 discovered the deployment topology is **multi-process**: ZCode, Claude Code, and the dashboard each spawn their own openfusion Node process, all sharing one `OPENFUSION_HOME` (one DB). The in-process `FusionStatusRegistry` (007) therefore can't see fusions from other processes — fixed in 007 by merging DB `status='running'` rows into `/api/runtime`. **Implication for 008:** live candidate-progress ("candidate 3 of 5") is inherently same-process-only (R-002 already scopes it ephemeral for exactly this reason — on restart it describes nothing). The 008 progress surface should lean on the durable `fusion_jobs` row for cross-process state and treat in-memory progress as a same-process nicety, not a guarantee.
+
+### (d) Sequential-mode staleness (not a 008 concern, but adjacent)
+
+007's sequential mode appeared broken in ZCode because the long-lived process loaded pre-sequential code at startup (Node caches modules). Fresh-process verification proved sequential works correctly. **Not a 008 issue**, but if 008's `_resume_from` retrieval ever reports a mode, it must read `execution_mode` from the durable `fusion_jobs` row (not the in-process registry) to avoid the same cross-process staleness.
+
+---
+
 ## R-002 — Storage is durable (SQLite) for both modes; live progress is ephemeral for both
 
 **Decision**: Persist job-state + result to a new `fusion_jobs` SQLite table for **both** parallel and sequential mode. Keep live candidate-progress (the "candidate 3 of 5" affordance spec 007's dashboard reads) **in-memory only** for both modes. (Spec Assumptions + FR-007/010.)

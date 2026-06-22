@@ -5,26 +5,17 @@
 // module defines them so they appear in the web config dropdowns and resolve
 // correctly at fusion time.
 //
-// Each entry provides:
-//   - provider id, display name, and description
-//   - whether an API key is required (local servers often don't need one)
-//   - a list of popular models with their model descriptors (baseUrl, api, etc.)
+// Custom providers are *discoverable*: they support the /v1/models endpoint
+// so the UI can fetch the actual available models at runtime instead of relying
+// on a hardcoded list that quickly goes stale. When discovery fails (server
+// down, no network), the user can type a model ID directly.
 //
 // At startup, registerCustomProviders() injects these into the pi-ai bridge
-// so listProviders(), listModels(), and resolveModel() all work seamlessly.
+// so resolveModel() works for any model the user selects. listProviders() and
+// listModels() are also augmented to include these providers.
 import type { AnyModel } from "./pi-ai-bridge.js";
 
-/** A model descriptor for a custom provider. */
-export interface CustomModelDescriptor {
-  id: string;
-  name: string;
-  contextWindow: number;
-  maxTokens: number;
-  reasoning: boolean;
-  cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
-}
-
-/** A custom provider definition with its models. */
+/** A custom provider definition. Models are discovered at runtime via /v1/models. */
 export interface CustomProviderDefinition {
   /** Unique provider id (used in config.json and secrets). */
   id: string;
@@ -38,8 +29,12 @@ export interface CustomProviderDefinition {
   baseUrl: string;
   /** pi-ai API type. All custom providers currently use openai-completions. */
   api: "openai-completions" | "openai-responses";
-  /** Popular models available on this provider. */
-  models: CustomModelDescriptor[];
+  /**
+   * Whether this provider supports /v1/models discovery.
+   * When true, the UI will offer a "Discover models" button that fetches the
+   * model list at runtime; the user can also type a model ID directly.
+   */
+  discoverable: boolean;
   /** Compat overrides for the OpenAI completions API (auto-detected if not set). */
   compat?: Record<string, unknown>;
 }
@@ -50,10 +45,13 @@ export interface CustomProviderDefinition {
 export const RAPID_MLX: CustomProviderDefinition = {
   id: "rapid-mlx",
   name: "Rapid-MLX (Local)",
-  description: "Local MLX inference server for Apple Silicon. Runs on localhost — no API key needed.",
+  description:
+    "Local MLX inference server for Apple Silicon. Runs on localhost — no API key needed. " +
+    "Models depend on what you have loaded; click Discover or type a model ID.",
   apiKeyRequired: false,
-  baseUrl: "http://localhost:1234/v1",
+  baseUrl: "http://localhost:8000/v1",
   api: "openai-completions",
+  discoverable: true,
   compat: {
     supportsStore: false,
     supportsDeveloperRole: false,
@@ -62,50 +60,19 @@ export const RAPID_MLX: CustomProviderDefinition = {
     supportsStrictMode: false,
     supportsLongCacheRetention: false,
   },
-  models: [
-    {
-      id: "mlx-community/Llama-3.2-3B-Instruct-4bit",
-      name: "Llama 3.2 3B Instruct (4-bit)",
-      contextWindow: 131072,
-      maxTokens: 4096,
-      reasoning: false,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    },
-    {
-      id: "mlx-community/Qwen2.5-7B-Instruct-4bit",
-      name: "Qwen 2.5 7B Instruct (4-bit)",
-      contextWindow: 131072,
-      maxTokens: 8192,
-      reasoning: false,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    },
-    {
-      id: "mlx-community/Mistral-Nemo-Instruct-2407-4bit",
-      name: "Mistral Nemo Instruct (4-bit)",
-      contextWindow: 131072,
-      maxTokens: 4096,
-      reasoning: false,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    },
-    {
-      id: "mlx-community/DeepSeek-R1-Distill-Llama-8B-4bit",
-      name: "DeepSeek R1 Distill Llama 8B (4-bit)",
-      contextWindow: 131072,
-      maxTokens: 8192,
-      reasoning: true,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    },
-  ],
 };
 
-/** ollama-cloud: Ollama's cloud API service. Requires an API key. */
+/** ollama-cloud: Ollama's cloud API at ollama.com. Requires an API key. */
 export const OLLAMA_CLOUD: CustomProviderDefinition = {
   id: "ollama-cloud",
   name: "Ollama Cloud",
-  description: "Ollama's hosted cloud API. Requires an API key from ollama.com.",
+  description:
+    "Ollama's hosted cloud API at ollama.com. Requires an API key. " +
+    "Cloud models (e.g. gpt-oss:120b-cloud) are discovered at runtime.",
   apiKeyRequired: true,
-  baseUrl: "https://api.ollama.com/v1",
+  baseUrl: "https://ollama.com/v1",
   api: "openai-completions",
+  discoverable: true,
   compat: {
     supportsStore: false,
     supportsDeveloperRole: false,
@@ -114,56 +81,6 @@ export const OLLAMA_CLOUD: CustomProviderDefinition = {
     supportsStrictMode: false,
     supportsLongCacheRetention: false,
   },
-  models: [
-    {
-      id: "llama3.3",
-      name: "Llama 3.3 70B",
-      contextWindow: 131072,
-      maxTokens: 32768,
-      reasoning: false,
-      cost: { input: 0.3, output: 0.7, cacheRead: 0, cacheWrite: 0 },
-    },
-    {
-      id: "llama3.1",
-      name: "Llama 3.1 8B",
-      contextWindow: 131072,
-      maxTokens: 4096,
-      reasoning: false,
-      cost: { input: 0.05, output: 0.1, cacheRead: 0, cacheWrite: 0 },
-    },
-    {
-      id: "mistral",
-      name: "Mistral 7B",
-      contextWindow: 32768,
-      maxTokens: 4096,
-      reasoning: false,
-      cost: { input: 0.05, output: 0.1, cacheRead: 0, cacheWrite: 0 },
-    },
-    {
-      id: "qwen2.5",
-      name: "Qwen 2.5 14B",
-      contextWindow: 131072,
-      maxTokens: 8192,
-      reasoning: false,
-      cost: { input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0 },
-    },
-    {
-      id: "deepseek-r1",
-      name: "DeepSeek R1",
-      contextWindow: 131072,
-      maxTokens: 8192,
-      reasoning: true,
-      cost: { input: 0.3, output: 1.0, cacheRead: 0, cacheWrite: 0 },
-    },
-    {
-      id: "gemma2",
-      name: "Gemma 2 9B",
-      contextWindow: 8192,
-      maxTokens: 4096,
-      reasoning: false,
-      cost: { input: 0.05, output: 0.1, cacheRead: 0, cacheWrite: 0 },
-    },
-  ],
 };
 
 /** All custom provider definitions, keyed by provider id. */
@@ -179,22 +96,64 @@ export const KEYLESS_PROVIDERS = new Set(
     .map((p) => p.id),
 );
 
-/** Convert a CustomProviderDefinition + model to a pi-ai AnyModel descriptor. */
-export function toModelDescriptor(
+/**
+ * Build a model descriptor for a dynamically discovered model.
+ * Used when the user selects a discovered model or types a custom model ID.
+ */
+export function buildModelDescriptor(
   provider: CustomProviderDefinition,
-  model: CustomModelDescriptor,
+  modelId: string,
+  overrides?: { contextWindow?: number; maxTokens?: number; reasoning?: boolean },
 ): AnyModel {
   return {
-    id: model.id,
-    name: model.name,
+    id: modelId,
+    name: modelId,
     api: provider.api,
     provider: provider.id,
     baseUrl: provider.baseUrl,
-    reasoning: model.reasoning,
+    reasoning: overrides?.reasoning ?? false,
     input: ["text" as const],
-    cost: model.cost,
-    contextWindow: model.contextWindow,
-    maxTokens: model.maxTokens,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: overrides?.contextWindow ?? 131072,
+    maxTokens: overrides?.maxTokens ?? 8192,
     ...(provider.compat ? { compat: provider.compat } : {}),
   };
+}
+
+/** Response shape from the OpenAI-compatible /v1/models endpoint. */
+export interface DiscoveryModel {
+  id: string;
+  object?: string;
+  created?: number;
+  owned_by?: string;
+}
+
+export interface DiscoveryResponse {
+  object?: string;
+  data: DiscoveryModel[];
+}
+
+/**
+ * Discover models from a provider's /v1/models endpoint.
+ * Returns a list of model IDs, or throws on network/auth errors.
+ */
+export async function discoverModels(
+  provider: CustomProviderDefinition,
+  apiKey?: string,
+): Promise<string[]> {
+  const url = `${provider.baseUrl}/models`;
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  const resp = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    throw new Error(`${resp.status} ${resp.statusText}${body ? `: ${body.slice(0, 200)}` : ""}`);
+  }
+  const json = (await resp.json()) as DiscoveryResponse;
+  const models = Array.isArray(json.data) ? json.data : [];
+  return models.map((m) => m.id).sort();
 }

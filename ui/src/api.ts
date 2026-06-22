@@ -149,6 +149,9 @@ export const api = {
   getProviders: () => getJSON<{ providers: ProviderInfo[] }>("/api/providers"),
   getModels: (provider: string) =>
     getJSON<{ models: ProviderModel[] }>(`/api/providers/${encodeURIComponent(provider)}/models`),
+  /** Discover models from a custom provider's /v1/models endpoint. */
+  discoverModels: (provider: string) =>
+    getJSON<{ models: string[] }>(`/api/providers/${encodeURIComponent(provider)}/discover`),
   testProvider: (provider: string, model: string, apiKey: string) =>
     sendJSON<TestResult>("POST", "/api/test", { provider, model, apiKey }),
   getStats: (filters?: Record<string, string>) => {

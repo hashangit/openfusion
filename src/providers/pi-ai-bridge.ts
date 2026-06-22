@@ -11,7 +11,7 @@ import {
   type Api,
 } from "@earendil-works/pi-ai";
 import type { Model } from "@earendil-works/pi-ai";
-import { CUSTOM_PROVIDERS, KEYLESS_PROVIDERS, toModelDescriptor } from "./custom-providers.js";
+import { CUSTOM_PROVIDERS, KEYLESS_PROVIDERS, buildModelDescriptor } from "./custom-providers.js";
 
 /**
  * Sentinel API key for providers that don't require authentication (e.g. rapid-mlx).
@@ -64,18 +64,8 @@ export function listProviders(): string[] {
   return [...builtIn, ...added];
 }
 
-/** List models for a provider (for the UI dropdowns). Includes custom provider models. */
+/** List models for a provider (for the UI dropdowns). Built-in only; custom providers use discovery. */
 export function listModels(provider: string) {
-  // Check custom providers first — their models come from our definitions.
-  const customDef = CUSTOM_PROVIDERS[provider];
-  if (customDef) {
-    return customDef.models.map((m) => ({
-      id: m.id,
-      contextWindow: m.contextWindow as number | undefined,
-      reasoning: m.reasoning as boolean | string | undefined,
-      cost: m.cost as { input?: number; output?: number } | undefined,
-    }));
-  }
   // Built-in pi-ai provider — delegate to the static registry.
   // May throw if provider unknown — let callers wrap.
   const models = getModels(provider as never) as Array<{
@@ -101,6 +91,18 @@ export function listModels(provider: string) {
 export function effectiveApiKey(provider: string, storedKey: string | undefined): string {
   if (KEYLESS_PROVIDERS.has(provider) && !storedKey) return NO_KEY_SENTINEL;
   return storedKey ?? "";
+}
+
+/**
+ * Register a model for a custom provider at runtime (e.g. after discovery or
+ * when the user types a model ID). Also registers the descriptor with pi-ai
+ * so resolveModel() works at fusion time.
+ */
+export function registerCustomModel(provider: string, modelId: string): void {
+  const def = CUSTOM_PROVIDERS[provider];
+  if (!def) return; // Not a custom provider — ignore (built-in providers use pi-ai's registry).
+  const descriptor = buildModelDescriptor(def, modelId);
+  registerModelDescriptor(provider, modelId, descriptor);
 }
 
 /** Run a single non-streaming completion. The single-shot worker + both judge steps use this. */
@@ -183,13 +185,12 @@ export class BridgeError extends Error {
 }
 
 /**
- * Register custom provider model descriptors with pi-ai so resolveModel() works
- * at fusion time. Call once at startup. Idempotent — re-registering overwrites.
+ * Register custom provider base descriptors with pi-ai so listProviders() works.
+ * Custom models are registered dynamically via registerCustomModel() when the user
+ * selects a discovered model or types a model ID. Called once at startup.
  */
 export function registerCustomProviders(): void {
-  for (const def of Object.values(CUSTOM_PROVIDERS)) {
-    for (const model of def.models) {
-      registerModelDescriptor(def.id, model.id, toModelDescriptor(def, model));
-    }
-  }
+  // No static models to register — they're discovered at runtime.
+  // This function is kept as a no-op placeholder for future static registrations
+  // and to maintain the startup call site in index.ts / ui-only.ts.
 }

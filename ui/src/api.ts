@@ -30,12 +30,20 @@ export interface Persona {
 export interface SecretsView {
   providers: Record<string, { present: boolean; hint: string | null }>;
   referenced: string[];
+  /** Provider ids that don't require an API key (e.g. rapid-mlx). */
+  keyless: string[];
 }
 export interface ProviderModel {
   id: string;
   contextWindow?: number;
   reasoning?: boolean | string;
   cost?: { input?: number; output?: number };
+}
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  description?: string;
+  keyless: boolean;
 }
 export interface TestResult {
   ok: boolean;
@@ -138,7 +146,7 @@ export const api = {
   getSecrets: () => getJSON<SecretsView>("/api/secrets"),
   putSecret: (provider: string, apiKey: string | null) =>
     sendJSON<SecretsView>("PUT", "/api/secrets", { provider, apiKey }),
-  getProviders: () => getJSON<{ providers: string[] }>("/api/providers"),
+  getProviders: () => getJSON<{ providers: ProviderInfo[] }>("/api/providers"),
   getModels: (provider: string) =>
     getJSON<{ models: ProviderModel[] }>(`/api/providers/${encodeURIComponent(provider)}/models`),
   testProvider: (provider: string, model: string, apiKey: string) =>

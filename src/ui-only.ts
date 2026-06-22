@@ -4,8 +4,10 @@
 // Shares the same on-disk SQLite + config + secrets as the MCP server.
 import { startUiServer } from "./server/ui-server.js";
 import { printStartupBanner } from "./util/startup.js";
+import { registerCustomProviders } from "./providers/pi-ai-bridge.js";
 
 async function main(): Promise<void> {
+  registerCustomProviders();
   await printStartupBanner();
   await startUiServer();
   console.error("OpenFusion dashboard running. Press Ctrl+C to stop.");

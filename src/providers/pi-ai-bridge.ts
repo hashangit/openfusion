@@ -11,6 +11,14 @@ import {
   type Api,
 } from "@earendil-works/pi-ai";
 import type { Model } from "@earendil-works/pi-ai";
+import { CUSTOM_PROVIDERS, KEYLESS_PROVIDERS, toModelDescriptor } from "./custom-providers.js";
+
+/**
+ * Sentinel API key for providers that don't require authentication (e.g. rapid-mlx).
+ * pi-ai's OpenAI completions provider throws if apiKey is falsy; this sentinel
+ * satisfies the check while the local server ignores it.
+ */
+const NO_KEY_SENTINEL = "no-key";
 
 /** The model shape used throughout OpenFusion (a pi-ai Model with a broad Api). */
 export type AnyModel = Model<Api>;
@@ -47,13 +55,28 @@ export function resolveModel(provider: string, model: string): AnyModel {
   }
 }
 
-/** List provider ids (for the UI dropdowns). */
+/** List provider ids (for the UI dropdowns). Includes pi-ai's built-in + custom providers. */
 export function listProviders(): string[] {
-  return getProviders() as string[];
+  const builtIn = getProviders() as string[];
+  const customIds = Object.keys(CUSTOM_PROVIDERS);
+  // Custom providers that aren't already in pi-ai's registry (avoid duplicates).
+  const added = customIds.filter((id) => !builtIn.includes(id));
+  return [...builtIn, ...added];
 }
 
-/** List models for a provider (for the UI dropdowns). */
+/** List models for a provider (for the UI dropdowns). Includes custom provider models. */
 export function listModels(provider: string) {
+  // Check custom providers first — their models come from our definitions.
+  const customDef = CUSTOM_PROVIDERS[provider];
+  if (customDef) {
+    return customDef.models.map((m) => ({
+      id: m.id,
+      contextWindow: m.contextWindow as number | undefined,
+      reasoning: m.reasoning as boolean | string | undefined,
+      cost: m.cost as { input?: number; output?: number } | undefined,
+    }));
+  }
+  // Built-in pi-ai provider — delegate to the static registry.
   // May throw if provider unknown — let callers wrap.
   const models = getModels(provider as never) as Array<{
     id: string;
@@ -67,6 +90,17 @@ export function listModels(provider: string) {
     reasoning: m.reasoning,
     cost: m.cost,
   }));
+}
+
+/**
+ * Resolve the effective API key for a provider. Keyless providers (e.g. rapid-mlx)
+ * that have no stored key get a sentinel value so pi-ai doesn't reject the call;
+ * all others pass through the stored key unchanged.
+ * If a keyless provider has a stored key (user explicitly saved one), respect it.
+ */
+export function effectiveApiKey(provider: string, storedKey: string | undefined): string {
+  if (KEYLESS_PROVIDERS.has(provider) && !storedKey) return NO_KEY_SENTINEL;
+  return storedKey ?? "";
 }
 
 /** Run a single non-streaming completion. The single-shot worker + both judge steps use this. */
@@ -145,5 +179,17 @@ export class BridgeError extends Error {
     super(message);
     this.name = "BridgeError";
     this.code = code;
+  }
+}
+
+/**
+ * Register custom provider model descriptors with pi-ai so resolveModel() works
+ * at fusion time. Call once at startup. Idempotent — re-registering overwrites.
+ */
+export function registerCustomProviders(): void {
+  for (const def of Object.values(CUSTOM_PROVIDERS)) {
+    for (const model of def.models) {
+      registerModelDescriptor(def.id, model.id, toModelDescriptor(def, model));
+    }
   }
 }

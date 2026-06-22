@@ -4,6 +4,7 @@
 import type { RawConfig } from "./schema.js";
 import { referencedProviders, loadSecrets } from "./secrets.js";
 import { paths } from "../util/paths.js";
+import { KEYLESS_PROVIDERS } from "../providers/custom-providers.js";
 
 export interface CompletenessReport {
   configured: boolean;
@@ -28,7 +29,9 @@ export function isConfigured(config: RawConfig, secretsPath = paths.secrets(), k
   const referenced = referencedProviders(config);
   if (referenced.length > 0) {
     const secrets = loadSecrets(secretsPath, keyPath);
-    const missing = referenced.filter((p) => !secrets.providers[p]?.apiKey);
+    // Keyless providers (e.g. rapid-mlx) don't need an API key stored in secrets.
+    const needsKey = referenced.filter((p) => !KEYLESS_PROVIDERS.has(p));
+    const missing = needsKey.filter((p) => !secrets.providers[p]?.apiKey);
     if (missing.length > 0) reasons.push(`missing API key for provider(s): ${missing.join(", ")}`);
   }
 

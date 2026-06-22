@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
-import { api, type AppConfig, type JudgeConfig, type ProviderModel } from "../api";
+import { api, type AppConfig, type JudgeConfig, type ProviderInfo, type ProviderModel } from "../api";
 
 export function JudgePage({ config, onChanged }: { config: AppConfig | null; onChanged: () => void }) {
   const [judges, setJudges] = useState<JudgeConfig[]>([]);
-  const [providers, setProviders] = useState<string[]>([]);
+  const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  // Provider id list for defaults.
+  const providers = providerList.map((p) => p.id);
 
   useEffect(() => {
     if (config) setJudges(config.judges);
   }, [config]);
   useEffect(() => {
-    void api.getProviders().then((r) => setProviders(r.providers));
+    void api.getProviders().then((r) => setProviderList(r.providers));
   }, []);
 
   const loadModels = async (provider: string) => {
@@ -103,9 +106,9 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
                 value={j.provider}
                 onChange={(e) => update(i, { provider: e.target.value, model: "" })}
               >
-                {providers.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
+                {providerList.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
               </select>

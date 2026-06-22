@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type AppConfig, type CandidateSlot, type ProviderModel } from "../api";
+import { api, type AppConfig, type CandidateSlot, type ProviderInfo, type ProviderModel } from "../api";
 
 /**
  * Serial time budget in minutes (feature 007). Mirrors the engine constants in
@@ -23,10 +23,13 @@ export function CandidatesPage({
   const [candidates, setCandidates] = useState<CandidateSlot[]>([]);
   const [benchmark, setBenchmark] = useState(false);
   const [sequential, setSequential] = useState(false);
-  const [providers, setProviders] = useState<string[]>([]);
+  const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  // Provider id list for dropdowns.
+  const providers = providerList.map((p) => p.id);
 
   useEffect(() => {
     if (config) {
@@ -37,7 +40,7 @@ export function CandidatesPage({
   }, [config]);
 
   useEffect(() => {
-    void api.getProviders().then((r) => setProviders(r.providers));
+    void api.getProviders().then((r) => setProviderList(r.providers));
   }, []);
 
   const loadModels = async (provider: string) => {
@@ -177,9 +180,9 @@ export function CandidatesPage({
                 value={c.provider}
                 onChange={(e) => update(c.id, { provider: e.target.value, model: "" })}
               >
-                {providers.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
+                {providerList.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
               </select>

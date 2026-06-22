@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { RawConfig } from "../config/schema.js";
 import { isConfigured } from "../config/completeness.js";
 import { getKey } from "../config/secrets.js";
-import { resolveModel, type AnyModel } from "../providers/pi-ai-bridge.js";
+import { resolveModel, effectiveApiKey, type AnyModel } from "../providers/pi-ai-bridge.js";
 import { runParallelFanout, runSequentialFanout } from "./fanout.js";
 import type { WorkerResult } from "./worker.js";
 import { fusionStatusRegistry } from "./status.js";
@@ -220,7 +220,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
     model: safeResolve(c.provider, c.model),
     prompt: input.prompt,
     context: input.context,
-    apiKey: getKey(c.provider, secretsPath, keyPath) ?? "",
+    apiKey: effectiveApiKey(c.provider, getKey(c.provider, secretsPath, keyPath)),
     timeoutMs: candidateTimeoutMs,
     workerPrompt: personaPrompts.worker,
   }));
@@ -288,7 +288,7 @@ export async function runFusion(input: FusionInput): Promise<FusionResult> {
 
   // --- Judge step 1: analysis ---
   const judgeModel = safeResolve(judge.provider, judge.model);
-  const judgeApiKey = getKey(judge.provider, secretsPath, keyPath) ?? "";
+  const judgeApiKey = effectiveApiKey(judge.provider, getKey(judge.provider, secretsPath, keyPath));
   const candidateViews: CandidateView[] = survivors.map((w, i) => ({
     index: i + 1,
     provider: w.provider,

@@ -6,9 +6,12 @@
 // correctly at fusion time.
 //
 // Both custom providers are discoverable — they support the /v1/models endpoint
-// so the UI can fetch the actual available models at runtime. No hardcoded
+// so the server can fetch the actual available models at runtime. No hardcoded
 // model lists: rapid-mlx's models depend on what's loaded locally, and
 // ollama-cloud's catalog changes as Ollama adds new cloud models.
+//
+// The `local` flag distinguishes local servers (may be unreachable, show
+// free-text input) from cloud providers (always reachable, show dropdown).
 //
 // At runtime, registerCustomProviders() registers static model descriptors with
 // the pi-ai bridge so resolveModel() works. For discovered or user-typed models,
@@ -31,10 +34,17 @@ export interface CustomProviderDefinition {
   api: "openai-completions" | "openai-responses";
   /**
    * Whether this provider supports /v1/models discovery.
-   * When true, the UI will offer a "Discover models" button that fetches the
-   * model list at runtime; the user can also type a model ID directly.
+   * When true, the /models API endpoint will query the provider's /v1/models
+   * for a live model list and return it as a normal dropdown.
    */
   discoverable: boolean;
+  /**
+   * Whether this is a local provider that may be unreachable.
+   * When true + discoverable, the UI shows a free-text input for model IDs
+   * if the server is down (no models found), plus a Discover button to retry.
+   * Cloud providers (local=false) always show a normal dropdown.
+   */
+  local: boolean;
   /** Compat overrides for the OpenAI completions API (auto-detected if not set). */
   compat?: Record<string, unknown>;
 }
@@ -52,6 +62,7 @@ export const RAPID_MLX: CustomProviderDefinition = {
   baseUrl: "http://localhost:8000/v1",
   api: "openai-completions",
   discoverable: true,
+  local: true,
   compat: {
     supportsStore: false,
     supportsDeveloperRole: false,
@@ -68,11 +79,12 @@ export const OLLAMA_CLOUD: CustomProviderDefinition = {
   name: "Ollama Cloud",
   description:
     "Ollama's hosted cloud API at ollama.com. Requires an API key. " +
-    "Click Discover to load available cloud models, or type a model ID directly.",
+    "Models are fetched from the cloud catalog automatically.",
   apiKeyRequired: true,
   baseUrl: "https://ollama.com/v1",
   api: "openai-completions",
   discoverable: true,
+  local: false,
   compat: {
     supportsStore: false,
     supportsDeveloperRole: false,

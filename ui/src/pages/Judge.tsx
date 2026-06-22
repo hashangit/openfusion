@@ -22,10 +22,20 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
     void api.getProviders().then((r) => setProviderList(r.providers));
   }, []);
 
+  // Eagerly load models for all providers referenced in the current config.
+  // This ensures saved model names appear immediately, not as "Focus to load…".
+  useEffect(() => {
+    if (!config) return;
+    const providers = new Set<string>();
+    for (const j of config.judges) providers.add(j.provider);
+    for (const p of providers) {
+      void loadModels(p);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
+
   const loadModels = async (provider: string) => {
     if (modelsByProvider[provider]) return;
-    const pInfo = providerMap.get(provider);
-    if (pInfo?.discoverable) return;
     try {
       const r = await api.getModels(provider);
       setModelsByProvider((m) => ({ ...m, [provider]: r.models }));
@@ -52,10 +62,7 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
   };
   const update = (idx: number, patch: Partial<JudgeConfig>) => {
     setJudges((js) => js.map((j, i) => (i === idx ? { ...j, ...patch } : j)));
-    if (patch.provider) {
-      const pInfo = providerMap.get(patch.provider);
-      if (!pInfo?.discoverable) void loadModels(patch.provider);
-    }
+    if (patch.provider) void loadModels(patch.provider);
   };
   const add = () => {
     setJudges((js) => [...js, { provider: providers[0] ?? "", model: "", enabled: false }]);
@@ -113,9 +120,19 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
       <div className="mt-4 space-y-2">
         {judges.map((j, i) => {
           const pInfo = providerMap.get(j.provider);
-          const isDiscoverable = pInfo?.discoverable ?? false;
-          const staticModels = modelsByProvider[j.provider] ?? [];
+          const isLocal = pInfo?.local ?? false;
+          const models = modelsByProvider[j.provider] ?? [];
+          const isLoading = loadingProvider === j.provider;
           const discovered = discoveredByProvider[j.provider] ?? [];
+          // For local discoverable providers, merge discovered models into the list.
+          const allModels = isLocal && discovered.length > 0
+            ? [...new Map([...discovered.map((id) => [id, { id }]), ...models.map((m) => [m.id, m])]).values()]
+            : models;
+          // If the saved model isn't in the list yet, add it as an option so it's visible.
+          const savedModelOption = j.model && !allModels.some((m) => m.id === j.model)
+            ? [{ id: j.model, contextWindow: undefined }]
+            : [];
+          const displayModels = [...savedModelOption, ...allModels];
           return (
             <div key={i} className={`glass-soft flex items-center gap-3 p-3 ${j.enabled ? "" : "opacity-50"}`}>
               <div
@@ -136,7 +153,8 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
                   </option>
                 ))}
               </select>
-              {isDiscoverable ? (
+              {isLocal ? (
+                /* Local discoverable providers: free-text input + Discover button */
                 <div className="flex flex-1 items-center gap-2">
                   <input
                     className="field flex-1"
@@ -160,17 +178,19 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
                   </button>
                 </div>
               ) : (
+                /* Built-in and cloud providers: dropdown with saved model always visible */
                 <select
                   className="field flex-1"
                   value={j.model}
                   onChange={(e) => update(i, { model: e.target.value })}
-                  onFocus={() => void loadModels(j.provider)}
                 >
-                  <option value="">{staticModels.length ? "Select a model…" : "Focus to load…"}</option>
-                  {staticModels.map((m) => (
+                  <option value="">
+                    {isLoading ? "Loading…" : displayModels.length ? "Select a model…" : "No models found"}
+                  </option>
+                  {displayModels.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.id}
-                      {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
+                      {"contextWindow" in m && m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
                     </option>
                   ))}
                 </select>

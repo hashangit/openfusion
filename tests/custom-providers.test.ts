@@ -127,6 +127,11 @@ describe("custom providers: definition shape", () => {
     expect(OLLAMA_CLOUD.discoverable).toBe(true);
   });
 
+  it("rapid-mlx is local, ollama-cloud is not", () => {
+    expect(RAPID_MLX.local).toBe(true);
+    expect(OLLAMA_CLOUD.local).toBe(false);
+  });
+
   it("rapid-mlx is keyless", () => {
     expect(RAPID_MLX.apiKeyRequired).toBe(false);
   });

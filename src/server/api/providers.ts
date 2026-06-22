@@ -13,7 +13,7 @@ export function providersRouter(): Router {
   // GET /api/providers — list all providers with metadata.
   r.get("/", (_req, res) => {
     const providers = listProviders();
-    // Enrich with metadata from custom provider definitions (name, description, keyless, discoverable).
+    // Enrich with metadata from custom provider definitions.
     const enriched = providers.map((id) => {
       const custom = CUSTOM_PROVIDERS[id];
       return {
@@ -22,20 +22,40 @@ export function providersRouter(): Router {
         description: custom?.description ?? undefined,
         keyless: KEYLESS_PROVIDERS.has(id),
         discoverable: custom?.discoverable ?? false,
+        local: custom?.local ?? false,
       };
     });
     res.json({ providers: enriched });
   });
 
-  // GET /api/providers/:provider/models — list models for a built-in provider.
-  // Custom providers use /discover instead (their models aren't static).
-  r.get("/:provider/models", (req, res) => {
+  // GET /api/providers/:provider/models — list models for any provider.
+  // For built-in providers: returns the static registry.
+  // For discoverable custom providers (both local and cloud): attempts live
+  // discovery from the provider's /v1/models endpoint. If the provider is
+  // unreachable (e.g. local server down), returns an empty list — the UI
+  // will show a free-text input for local providers or an error for cloud providers.
+  r.get("/:provider/models", async (req, res) => {
     const provider = req.params.provider;
-    // For custom discoverable providers, return empty — use /discover.
-    if (CUSTOM_PROVIDERS[provider]?.discoverable) {
-      res.json({ models: [] });
+    const customDef = CUSTOM_PROVIDERS[provider];
+
+    if (customDef?.discoverable) {
+      // Attempt live discovery from the provider's /v1/models endpoint.
+      const apiKey = effectiveApiKey(provider, getKey(provider));
+      try {
+        const modelIds = await discoverModels(customDef, apiKey === "no-key" ? undefined : apiKey);
+        // Register discovered models so resolveModel() works at fusion time.
+        for (const id of modelIds) {
+          registerCustomModel(provider, id);
+        }
+        res.json({ models: modelIds.map((id) => ({ id })) });
+      } catch {
+        // Provider unreachable or auth failed — return empty list.
+        res.json({ models: [] });
+      }
       return;
     }
+
+    // Built-in pi-ai provider — delegate to the static registry.
     try {
       res.json({ models: listModels(provider) });
     } catch (e) {
@@ -45,21 +65,19 @@ export function providersRouter(): Router {
     }
   });
 
-  // GET /api/providers/:provider/discover — dynamically discover models from a
-  // custom provider's /v1/models endpoint. Also registers discovered models with
-  // the pi-ai bridge so resolveModel() works at fusion time.
+  // GET /api/providers/:provider/discover — explicit discover endpoint.
+  // Only for local providers that may need a manual retry (e.g. after starting
+  // a local server). Cloud providers don't need this — they're always reachable.
   r.get("/:provider/discover", async (req, res) => {
     const provider = req.params.provider;
     const def = CUSTOM_PROVIDERS[provider];
-    if (!def || !def.discoverable) {
+    if (!def || !def.discoverable || !def.local) {
       res.status(404).json({ error: `Provider '${provider}' does not support model discovery.` });
       return;
     }
-    // Resolve an API key: for keyless providers use the sentinel, otherwise look up stored key.
     const apiKey = effectiveApiKey(provider, getKey(provider));
     try {
       const modelIds = await discoverModels(def, apiKey === "no-key" ? undefined : apiKey);
-      // Register each discovered model with the bridge so resolveModel() works.
       for (const id of modelIds) {
         registerCustomModel(provider, id);
       }

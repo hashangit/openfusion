@@ -46,6 +46,8 @@ export interface ProviderInfo {
   keyless: boolean;
   /** Whether this provider supports /v1/models discovery. */
   discoverable: boolean;
+  /** Whether this is a local provider that may be unreachable. */
+  local: boolean;
 }
 export interface TestResult {
   ok: boolean;

@@ -1,11 +1,25 @@
 import { useEffect, useState } from "react";
 import { api, type AppConfig, type JudgeConfig, type ProviderInfo, type ProviderModel } from "../api";
 
+/** Merge two model lists, deduplicating by id. Keeps the entry from `b` on conflict. */
+function mergeModelLists(a: ProviderModel[], b: ProviderModel[]): ProviderModel[] {
+  const seen = new Set<string>();
+  const result: ProviderModel[] = [];
+  for (const m of a) {
+    if (!seen.has(m.id)) { seen.add(m.id); result.push(m); }
+  }
+  for (const m of b) {
+    if (!seen.has(m.id)) { seen.add(m.id); result.push(m); }
+  }
+  return result;
+}
+
 export function JudgePage({ config, onChanged }: { config: AppConfig | null; onChanged: () => void }) {
   const [judges, setJudges] = useState<JudgeConfig[]>([]);
   const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
-  /** Discovered model IDs for custom/discoverable providers (keyed by provider). */
+  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
+  /** Discovered model IDs for local providers (keyed by provider). */
   const [discoveredByProvider, setDiscoveredByProvider] = useState<Record<string, string[]>>({});
   const [discovering, setDiscovering] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -36,11 +50,14 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
 
   const loadModels = async (provider: string) => {
     if (modelsByProvider[provider]) return;
+    setLoadingProvider(provider);
     try {
       const r = await api.getModels(provider);
       setModelsByProvider((m) => ({ ...m, [provider]: r.models }));
     } catch {
       /* ignore */
+    } finally {
+      setLoadingProvider(null);
     }
   };
 
@@ -125,14 +142,13 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
           const isLoading = loadingProvider === j.provider;
           const discovered = discoveredByProvider[j.provider] ?? [];
           // For local discoverable providers, merge discovered models into the list.
-          const allModels = isLocal && discovered.length > 0
-            ? [...new Map([...discovered.map((id) => [id, { id }]), ...models.map((m) => [m.id, m])]).values()]
+          const allModels: ProviderModel[] = isLocal && discovered.length > 0
+            ? mergeModelLists(discovered.map((id) => ({ id })), models)
             : models;
           // If the saved model isn't in the list yet, add it as an option so it's visible.
-          const savedModelOption = j.model && !allModels.some((m) => m.id === j.model)
-            ? [{ id: j.model, contextWindow: undefined }]
-            : [];
-          const displayModels = [...savedModelOption, ...allModels];
+          const displayModels = j.model && !allModels.some((m) => m.id === j.model)
+            ? [{ id: j.model }, ...allModels]
+            : allModels;
           return (
             <div key={i} className={`glass-soft flex items-center gap-3 p-3 ${j.enabled ? "" : "opacity-50"}`}>
               <div
@@ -190,7 +206,7 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
                   {displayModels.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.id}
-                      {"contextWindow" in m && m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
+                      {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
                     </option>
                   ))}
                 </select>

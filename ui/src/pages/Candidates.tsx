@@ -1,6 +1,19 @@
 import { useEffect, useState } from "react";
 import { api, type AppConfig, type CandidateSlot, type ProviderInfo, type ProviderModel } from "../api";
 
+/** Merge two model lists, deduplicating by id. Keeps the entry from `b` on conflict. */
+function mergeModelLists(a: ProviderModel[], b: ProviderModel[]): ProviderModel[] {
+  const seen = new Set<string>();
+  const result: ProviderModel[] = [];
+  for (const m of a) {
+    if (!seen.has(m.id)) { seen.add(m.id); result.push(m); }
+  }
+  for (const m of b) {
+    if (!seen.has(m.id)) { seen.add(m.id); result.push(m); }
+  }
+  return result;
+}
+
 /**
  * Serial time budget in minutes (feature 007). Mirrors the engine constants in
  * src/fusion/fanout.ts (PER_CANDIDATE_MS=180_000, JUDGE_STEPS_MS=360_000). TS constants
@@ -25,7 +38,8 @@ export function CandidatesPage({
   const [sequential, setSequential] = useState(false);
   const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
-  /** Discovered model IDs for custom/discoverable providers (keyed by provider). */
+  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
+  /** Discovered model IDs for local providers (keyed by provider). */
   const [discoveredByProvider, setDiscoveredByProvider] = useState<Record<string, string[]>>({});
   const [discovering, setDiscovering] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -62,11 +76,14 @@ export function CandidatesPage({
 
   const loadModels = async (provider: string) => {
     if (modelsByProvider[provider]) return;
+    setLoadingProvider(provider);
     try {
       const r = await api.getModels(provider);
       setModelsByProvider((m) => ({ ...m, [provider]: r.models }));
     } catch {
       /* ignore */
+    } finally {
+      setLoadingProvider(null);
     }
   };
 
@@ -199,14 +216,13 @@ export function CandidatesPage({
           const isLoading = loadingProvider === c.provider;
           const discovered = discoveredByProvider[c.provider] ?? [];
           // For local discoverable providers, merge discovered models into the list.
-          const allModels = isLocal && discovered.length > 0
-            ? [...new Map([...discovered.map((id) => [id, { id }]), ...models.map((m) => [m.id, m])]).values()]
+          const allModels: ProviderModel[] = isLocal && discovered.length > 0
+            ? mergeModelLists(discovered.map((id) => ({ id })), models)
             : models;
           // If the saved model isn't in the list yet, add it as an option so it's visible.
-          const savedModelOption = c.model && !allModels.some((m) => m.id === c.model)
-            ? [{ id: c.model, contextWindow: undefined }]
-            : [];
-          const displayModels = [...savedModelOption, ...allModels];
+          const displayModels = c.model && !allModels.some((m) => m.id === c.model)
+            ? [{ id: c.model }, ...allModels]
+            : allModels;
           return (
             <div key={c.id} className={`glass-soft flex items-center gap-3 p-3 ${c.enabled ? "" : "opacity-50"}`}>
               <span className="grid h-7 w-7 place-items-center rounded-full bg-white/10 text-xs">{i + 1}</span>
@@ -265,7 +281,7 @@ export function CandidatesPage({
                   {displayModels.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.id}
-                      {"contextWindow" in m && m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
+                      {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
                     </option>
                   ))}
                 </select>

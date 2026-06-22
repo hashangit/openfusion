@@ -44,6 +44,8 @@ export interface ProviderInfo {
   name: string;
   description?: string;
   keyless: boolean;
+  /** Whether this provider supports /v1/models discovery. */
+  discoverable: boolean;
 }
 export interface TestResult {
   ok: boolean;

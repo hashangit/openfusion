@@ -25,11 +25,15 @@ export function CandidatesPage({
   const [sequential, setSequential] = useState(false);
   const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
+  /** Discovered model IDs for custom/discoverable providers (keyed by provider). */
+  const [discoveredByProvider, setDiscoveredByProvider] = useState<Record<string, string[]>>({});
+  const [discovering, setDiscovering] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   // Provider id list for dropdowns.
   const providers = providerList.map((p) => p.id);
+  const providerMap = new Map(providerList.map((p) => [p.id, p]));
 
   useEffect(() => {
     if (config) {
@@ -45,6 +49,8 @@ export function CandidatesPage({
 
   const loadModels = async (provider: string) => {
     if (modelsByProvider[provider]) return;
+    const pInfo = providerMap.get(provider);
+    if (pInfo?.discoverable) return; // Discoverable providers use the Discover button.
     try {
       const r = await api.getModels(provider);
       setModelsByProvider((m) => ({ ...m, [provider]: r.models }));
@@ -53,9 +59,24 @@ export function CandidatesPage({
     }
   };
 
+  const discoverModels = async (provider: string) => {
+    setDiscovering(provider);
+    try {
+      const r = await api.discoverModels(provider);
+      setDiscoveredByProvider((d) => ({ ...d, [provider]: r.models }));
+    } catch (e) {
+      setMsg(`Discovery failed: ${(e as Error).message}`);
+    } finally {
+      setDiscovering(null);
+    }
+  };
+
   const update = (id: string, patch: Partial<CandidateSlot>) => {
     setCandidates((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
-    if (patch.provider) void loadModels(patch.provider);
+    if (patch.provider) {
+      const pInfo = providerMap.get(patch.provider);
+      if (!pInfo?.discoverable) void loadModels(patch.provider);
+    }
   };
   const add = () => {
     // In benchmark mode there's no max; otherwise cap at 5.
@@ -164,7 +185,10 @@ export function CandidatesPage({
 
       <div className="space-y-2">
         {candidates.map((c, i) => {
-          const models = modelsByProvider[c.provider] ?? [];
+          const pInfo = providerMap.get(c.provider);
+          const isDiscoverable = pInfo?.discoverable ?? false;
+          const staticModels = modelsByProvider[c.provider] ?? [];
+          const discovered = discoveredByProvider[c.provider] ?? [];
           return (
             <div key={c.id} className={`glass-soft flex items-center gap-3 p-3 ${c.enabled ? "" : "opacity-50"}`}>
               <span className="grid h-7 w-7 place-items-center rounded-full bg-white/10 text-xs">{i + 1}</span>
@@ -186,20 +210,47 @@ export function CandidatesPage({
                   </option>
                 ))}
               </select>
-              <select
-                className="field flex-1"
-                value={c.model}
-                onChange={(e) => update(c.id, { model: e.target.value })}
-                onFocus={() => void loadModels(c.provider)}
-              >
-                <option value="">{models.length ? "Select a model…" : "Focus to load…"}</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.id}
-                    {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
-                  </option>
-                ))}
-              </select>
+              {isDiscoverable ? (
+                /* Discoverable providers: show discovered models in a datalist + free-text input */
+                <div className="flex flex-1 items-center gap-2">
+                  <input
+                    className="field flex-1"
+                    type="text"
+                    list={`models-${c.provider}`}
+                    placeholder={discovered.length ? "Select or type a model…" : "Type a model ID…"}
+                    value={c.model}
+                    onChange={(e) => update(c.id, { model: e.target.value })}
+                  />
+                  <datalist id={`models-${c.provider}`}>
+                    {discovered.map((id) => (
+                      <option key={id} value={id} />
+                    ))}
+                  </datalist>
+                  <button
+                    className="btn text-xs whitespace-nowrap"
+                    onClick={() => void discoverModels(c.provider)}
+                    disabled={discovering === c.provider}
+                  >
+                    {discovering === c.provider ? "Discovering…" : "Discover"}
+                  </button>
+                </div>
+              ) : (
+                /* Built-in providers: static model dropdown */
+                <select
+                  className="field flex-1"
+                  value={c.model}
+                  onChange={(e) => update(c.id, { model: e.target.value })}
+                  onFocus={() => void loadModels(c.provider)}
+                >
+                  <option value="">{staticModels.length ? "Select a model…" : "Focus to load…"}</option>
+                  {staticModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id}
+                      {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button className="btn" onClick={() => remove(c.id)}>
                 Remove
               </button>

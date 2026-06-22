@@ -5,11 +5,15 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
   const [judges, setJudges] = useState<JudgeConfig[]>([]);
   const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
+  /** Discovered model IDs for custom/discoverable providers (keyed by provider). */
+  const [discoveredByProvider, setDiscoveredByProvider] = useState<Record<string, string[]>>({});
+  const [discovering, setDiscovering] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   // Provider id list for defaults.
   const providers = providerList.map((p) => p.id);
+  const providerMap = new Map(providerList.map((p) => [p.id, p]));
 
   useEffect(() => {
     if (config) setJudges(config.judges);
@@ -20,11 +24,25 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
 
   const loadModels = async (provider: string) => {
     if (modelsByProvider[provider]) return;
+    const pInfo = providerMap.get(provider);
+    if (pInfo?.discoverable) return;
     try {
       const r = await api.getModels(provider);
       setModelsByProvider((m) => ({ ...m, [provider]: r.models }));
     } catch {
       /* ignore */
+    }
+  };
+
+  const discoverModels = async (provider: string) => {
+    setDiscovering(provider);
+    try {
+      const r = await api.discoverModels(provider);
+      setDiscoveredByProvider((d) => ({ ...d, [provider]: r.models }));
+    } catch (e) {
+      setMsg(`Discovery failed: ${(e as Error).message}`);
+    } finally {
+      setDiscovering(null);
     }
   };
 
@@ -34,7 +52,10 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
   };
   const update = (idx: number, patch: Partial<JudgeConfig>) => {
     setJudges((js) => js.map((j, i) => (i === idx ? { ...j, ...patch } : j)));
-    if (patch.provider) void loadModels(patch.provider);
+    if (patch.provider) {
+      const pInfo = providerMap.get(patch.provider);
+      if (!pInfo?.discoverable) void loadModels(patch.provider);
+    }
   };
   const add = () => {
     setJudges((js) => [...js, { provider: providers[0] ?? "", model: "", enabled: false }]);
@@ -91,7 +112,10 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
 
       <div className="mt-4 space-y-2">
         {judges.map((j, i) => {
-          const models = modelsByProvider[j.provider] ?? [];
+          const pInfo = providerMap.get(j.provider);
+          const isDiscoverable = pInfo?.discoverable ?? false;
+          const staticModels = modelsByProvider[j.provider] ?? [];
+          const discovered = discoveredByProvider[j.provider] ?? [];
           return (
             <div key={i} className={`glass-soft flex items-center gap-3 p-3 ${j.enabled ? "" : "opacity-50"}`}>
               <div
@@ -112,20 +136,45 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
                   </option>
                 ))}
               </select>
-              <select
-                className="field flex-1"
-                value={j.model}
-                onChange={(e) => update(i, { model: e.target.value })}
-                onFocus={() => void loadModels(j.provider)}
-              >
-                <option value="">{models.length ? "Select a model…" : "Focus to load…"}</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.id}
-                    {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
-                  </option>
-                ))}
-              </select>
+              {isDiscoverable ? (
+                <div className="flex flex-1 items-center gap-2">
+                  <input
+                    className="field flex-1"
+                    type="text"
+                    list={`judge-models-${j.provider}`}
+                    placeholder={discovered.length ? "Select or type a model…" : "Type a model ID…"}
+                    value={j.model}
+                    onChange={(e) => update(i, { model: e.target.value })}
+                  />
+                  <datalist id={`judge-models-${j.provider}`}>
+                    {discovered.map((id) => (
+                      <option key={id} value={id} />
+                    ))}
+                  </datalist>
+                  <button
+                    className="btn text-xs whitespace-nowrap"
+                    onClick={() => void discoverModels(j.provider)}
+                    disabled={discovering === j.provider}
+                  >
+                    {discovering === j.provider ? "Discovering…" : "Discover"}
+                  </button>
+                </div>
+              ) : (
+                <select
+                  className="field flex-1"
+                  value={j.model}
+                  onChange={(e) => update(i, { model: e.target.value })}
+                  onFocus={() => void loadModels(j.provider)}
+                >
+                  <option value="">{staticModels.length ? "Select a model…" : "Focus to load…"}</option>
+                  {staticModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id}
+                      {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button className="btn" onClick={() => remove(i)} disabled={judges.length <= 1}>
                 Remove
               </button>

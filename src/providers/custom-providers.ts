@@ -5,17 +5,17 @@
 // module defines them so they appear in the web config dropdowns and resolve
 // correctly at fusion time.
 //
-// Custom providers are *discoverable*: they support the /v1/models endpoint
-// so the UI can fetch the actual available models at runtime instead of relying
-// on a hardcoded list that quickly goes stale. When discovery fails (server
-// down, no network), the user can type a model ID directly.
+// Both custom providers are discoverable — they support the /v1/models endpoint
+// so the UI can fetch the actual available models at runtime. No hardcoded
+// model lists: rapid-mlx's models depend on what's loaded locally, and
+// ollama-cloud's catalog changes as Ollama adds new cloud models.
 //
-// At startup, registerCustomProviders() injects these into the pi-ai bridge
-// so resolveModel() works for any model the user selects. listProviders() and
-// listModels() are also augmented to include these providers.
+// At runtime, registerCustomProviders() registers static model descriptors with
+// the pi-ai bridge so resolveModel() works. For discovered or user-typed models,
+// registerCustomModel() is called on the fly.
 import type { AnyModel } from "./pi-ai-bridge.js";
 
-/** A custom provider definition. Models are discovered at runtime via /v1/models. */
+/** A custom provider definition. */
 export interface CustomProviderDefinition {
   /** Unique provider id (used in config.json and secrets). */
   id: string;
@@ -47,7 +47,7 @@ export const RAPID_MLX: CustomProviderDefinition = {
   name: "Rapid-MLX (Local)",
   description:
     "Local MLX inference server for Apple Silicon. Runs on localhost — no API key needed. " +
-    "Models depend on what you have loaded; click Discover or type a model ID.",
+    "Click Discover to load available models, or type a model ID directly.",
   apiKeyRequired: false,
   baseUrl: "http://localhost:8000/v1",
   api: "openai-completions",
@@ -68,7 +68,7 @@ export const OLLAMA_CLOUD: CustomProviderDefinition = {
   name: "Ollama Cloud",
   description:
     "Ollama's hosted cloud API at ollama.com. Requires an API key. " +
-    "Cloud models (e.g. gpt-oss:120b-cloud) are discovered at runtime.",
+    "Click Discover to load available cloud models, or type a model ID directly.",
   apiKeyRequired: true,
   baseUrl: "https://ollama.com/v1",
   api: "openai-completions",
@@ -97,8 +97,8 @@ export const KEYLESS_PROVIDERS = new Set(
 );
 
 /**
- * Build a model descriptor for a dynamically discovered model.
- * Used when the user selects a discovered model or types a custom model ID.
+ * Build a model descriptor for a dynamically discovered or user-typed model.
+ * Used by registerCustomModel() and the discover endpoint.
  */
 export function buildModelDescriptor(
   provider: CustomProviderDefinition,

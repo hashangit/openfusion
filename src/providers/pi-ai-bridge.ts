@@ -203,8 +203,12 @@ export class BridgeError extends Error {
  * Note: listProviders() already returns custom provider ids via CUSTOM_PROVIDERS,
  * so there is no separate "register providers" step — only models need registering.
  */
-export function registerConfigModels(config: { candidates: Array<{ provider: string; model: string }>; judges: Array<{ provider: string; model: string }> }): void {
-  const entries = [...config.candidates, ...config.judges];
+export function registerConfigModels(config: { candidates?: Array<{ provider: string; model: string }>; judges?: Array<{ provider: string; model: string }> }): void {
+  // candidates/judges are optional in the param type for defensive robustness.
+  // In practice loadConfig()'s zod schema (RawConfigSchema) always defaults
+  // these to [], so the real startup path never passes undefined — but this is
+  // a public export, so tolerate a partial/empty config without crashing.
+  const entries = [...(config?.candidates ?? []), ...(config?.judges ?? [])];
   for (const { provider, model } of entries) {
     if (CUSTOM_PROVIDERS[provider] && model) {
       registerCustomModel(provider, model);

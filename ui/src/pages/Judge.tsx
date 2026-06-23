@@ -6,7 +6,9 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
   const [judges, setJudges] = useState<JudgeConfig[]>([]);
   const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
-  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
+  // Per-provider loading flags so concurrent loads don't clobber each other's
+  // indicator, and to guard against duplicate in-flight requests per provider.
+  const [loadingProviders, setLoadingProviders] = useState<Record<string, boolean>>({});
   /** Discovered model IDs for local providers (keyed by provider). */
   const [discoveredByProvider, setDiscoveredByProvider] = useState<Record<string, string[]>>({});
   const [discovering, setDiscovering] = useState<string | null>(null);
@@ -30,8 +32,10 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
   // provider on every page visit, hanging the UI when a local server is down.
   // A saved model is always shown via the displayModels prepend below.
   const loadModels = async (provider: string) => {
-    if (modelsByProvider[provider] !== undefined) return;
-    setLoadingProvider(provider);
+    // Skip if already loaded OR already in flight (prevents duplicate concurrent
+    // requests for the same provider on rapid focus/switch).
+    if (modelsByProvider[provider] !== undefined || loadingProviders[provider]) return;
+    setLoadingProviders((lp) => ({ ...lp, [provider]: true }));
     try {
       const r = await api.getModels(provider);
       // On a discovery failure the server returns { models: [], error }. Surface
@@ -46,7 +50,7 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
     } catch (e) {
       setMsg(`Failed to load models for ${provider}: ${(e as Error).message}`);
     } finally {
-      setLoadingProvider(null);
+      setLoadingProviders((lp) => ({ ...lp, [provider]: false }));
     }
   };
 
@@ -129,7 +133,7 @@ export function JudgePage({ config, onChanged }: { config: AppConfig | null; onC
           const isLocal = pInfo?.local ?? false;
           const models = modelsByProvider[j.provider] ?? [];
           const loaded = modelsByProvider[j.provider] !== undefined;
-          const isLoading = loadingProvider === j.provider;
+          const isLoading = !!loadingProviders[j.provider];
           const discovered = discoveredByProvider[j.provider] ?? [];
           // For local discoverable providers, merge discovered models into the list.
           const allModels: ProviderModel[] = isLocal && discovered.length > 0

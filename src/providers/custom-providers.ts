@@ -175,7 +175,13 @@ export async function discoverModels(
     const body = await resp.text().catch(() => "");
     throw new Error(`${resp.status} ${resp.statusText}${body ? `: ${body.slice(0, 200)}` : ""}`);
   }
-  const json = (await resp.json()) as DiscoveryResponse;
-  const models = Array.isArray(json.data) ? json.data : [];
-  return models.map((m) => m.id).sort();
+  // Tolerate non-compliant /v1/models responses: a null body, a missing data
+  // array, or non-object elements would otherwise crash discovery. Keep only
+  // entries that look like { id: string }.
+  const json = (await resp.json()) as DiscoveryResponse | null;
+  const models = json && Array.isArray(json.data) ? json.data : [];
+  return models
+    .filter((m): m is DiscoveryModel => m != null && typeof m === "object" && typeof m.id === "string")
+    .map((m) => m.id)
+    .sort();
 }

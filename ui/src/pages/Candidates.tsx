@@ -26,7 +26,10 @@ export function CandidatesPage({
   const [sequential, setSequential] = useState(false);
   const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
-  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
+  // Per-provider loading flags so concurrent loads (e.g. switching the provider
+  // select while another is still fetching) don't clobber each other's indicator,
+  // and to guard against duplicate in-flight requests for the same provider.
+  const [loadingProviders, setLoadingProviders] = useState<Record<string, boolean>>({});
   /** Discovered model IDs for local providers (keyed by provider). */
   const [discoveredByProvider, setDiscoveredByProvider] = useState<Record<string, string[]>>({});
   const [discovering, setDiscovering] = useState<string | null>(null);
@@ -56,8 +59,10 @@ export function CandidatesPage({
   // A saved model is always shown via the displayModels prepend below, so it
   // doesn't need the full list to be loaded first.
   const loadModels = async (provider: string) => {
-    if (modelsByProvider[provider] !== undefined) return;
-    setLoadingProvider(provider);
+    // Skip if already loaded OR already in flight (prevents duplicate concurrent
+    // requests for the same provider on rapid focus/switch).
+    if (modelsByProvider[provider] !== undefined || loadingProviders[provider]) return;
+    setLoadingProviders((lp) => ({ ...lp, [provider]: true }));
     try {
       const r = await api.getModels(provider);
       // On a discovery failure (auth rejected / server unreachable) the server
@@ -73,7 +78,7 @@ export function CandidatesPage({
     } catch (e) {
       setMsg(`Failed to load models for ${provider}: ${(e as Error).message}`);
     } finally {
-      setLoadingProvider(null);
+      setLoadingProviders((lp) => ({ ...lp, [provider]: false }));
     }
   };
 
@@ -204,7 +209,7 @@ export function CandidatesPage({
           const isLocal = pInfo?.local ?? false;
           const models = modelsByProvider[c.provider] ?? [];
           const loaded = modelsByProvider[c.provider] !== undefined;
-          const isLoading = loadingProvider === c.provider;
+          const isLoading = !!loadingProviders[c.provider];
           const discovered = discoveredByProvider[c.provider] ?? [];
           // For local discoverable providers, merge discovered models into the list.
           const allModels: ProviderModel[] = isLocal && discovered.length > 0

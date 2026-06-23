@@ -4,7 +4,6 @@ import {
   listProviders,
   listModels,
   resolveModel,
-  registerCustomProviders,
   clearModelDescriptors,
   registerCustomModel,
   registerConfigModels,
@@ -17,11 +16,25 @@ import {
   KEYLESS_PROVIDERS,
   buildModelDescriptor,
 } from "../src/providers/custom-providers.js";
+import { isConfigured } from "../src/config/completeness.js";
+import { setProviderKey } from "../src/config/secrets.js";
+import { RawConfigSchema, type RawConfig } from "../src/config/schema.js";
+import { rmSync } from "node:fs";
 
-// Ensure custom providers are registered before each test.
+// A secrets/key path that does not exist — loadSecrets() returns empty
+// (unconfigured) without throwing, so we can assert the gate's key logic in
+// isolation. Distinct per process to avoid cross-test bleed.
+const NO_SECRETS = `/tmp/openfusion-test-secrets-${process.pid}.enc`;
+const NO_KEY = `/tmp/openfusion-test-master-${process.pid}.key`;
+
+/** Build a valid RawConfig from bare candidate/judge lists (settings defaulted). */
+function cfg(candidates: Array<{ id: string; provider: string; model: string; enabled?: boolean }>, judges: Array<{ provider: string; model: string; enabled?: boolean }>): RawConfig {
+  return RawConfigSchema.parse({ candidates, judges });
+}
+
+// Clear the model override registry before each test so registrations don't leak.
 beforeEach(() => {
   clearModelDescriptors();
-  registerCustomProviders();
 });
 
 describe("custom providers: registration", () => {
@@ -163,9 +176,6 @@ describe("custom providers: completeness gate", () => {
 });
 
 describe("custom providers: registerConfigModels", () => {
-  // registerConfigModels is imported with registerCustomProviders above.
-  // It must be called AFTER registerCustomProviders (which is done in beforeEach).
-
   it("registers custom provider models from config so resolveModel works", () => {
     registerConfigModels({
       candidates: [
@@ -194,7 +204,6 @@ describe("custom providers: registerConfigModels", () => {
 
   it("skips entries with empty model strings", () => {
     clearModelDescriptors();
-    registerCustomProviders();
     registerConfigModels({
       candidates: [
         { id: "c1", provider: "rapid-mlx", model: "", enabled: true },
@@ -207,7 +216,6 @@ describe("custom providers: registerConfigModels", () => {
 
   it("skips providers that are not custom", () => {
     clearModelDescriptors();
-    registerCustomProviders();
     // openai is a built-in provider, not a custom one — registerConfigModels should skip it.
     registerConfigModels({
       candidates: [
@@ -218,5 +226,72 @@ describe("custom providers: registerConfigModels", () => {
     // gpt-4o resolves via pi-ai's built-in registry, not via modelOverrides.
     const model = resolveModel("openai", "gpt-4o");
     expect(model.provider).toBe("openai");
+  });
+});
+
+describe("custom providers: completeness gate with keyless providers", () => {
+  // Constitution VI: a key is required for every referenced provider that needs
+  // one. Keyless providers (rapid-mlx) are exempt; keyed providers (ollama-cloud)
+  // are not. The >=2 candidates / >=1 judge rules are independent and untouched.
+
+  it("is configured with only keyless providers referenced and no stored key", () => {
+    const report = isConfigured(
+      cfg(
+        [
+          { id: "c1", provider: "rapid-mlx", model: "mlx-community/Qwen3-35B", enabled: true },
+          { id: "c2", provider: "rapid-mlx", model: "mlx-community/Qwen3-8B", enabled: true },
+        ],
+        [{ provider: "rapid-mlx", model: "mlx-community/Qwen3-35B", enabled: true }],
+      ),
+      NO_SECRETS,
+      NO_KEY,
+    );
+    // No secrets file and no master key -> no stored keys, but rapid-mlx is
+    // keyless so the gate must NOT report a missing key.
+    expect(report.reasons).not.toContain("missing API key for provider(s): rapid-mlx");
+    expect(report.configured).toBe(true);
+  });
+
+  it("is NOT configured when a keyed cloud provider (ollama-cloud) has no stored key", () => {
+    const report = isConfigured(
+      cfg(
+        [
+          { id: "c1", provider: "ollama-cloud", model: "gpt-oss:120b", enabled: true },
+          { id: "c2", provider: "ollama-cloud", model: "gpt-oss:20b", enabled: true },
+        ],
+        [{ provider: "ollama-cloud", model: "gpt-oss:120b", enabled: true }],
+      ),
+      NO_SECRETS,
+      NO_KEY,
+    );
+    // ollama-cloud is keyed and has no stored key -> gate must fail with a clear reason.
+    expect(report.configured).toBe(false);
+    expect(report.reasons.some((r) => r.includes("ollama-cloud"))).toBe(true);
+  });
+
+  it("is configured when a keyed cloud provider (ollama-cloud) HAS a stored key", () => {
+    // Real positive direction: actually persist a key for a keyed provider via
+    // the secrets store, then confirm the gate passes. Uses throwaway temp
+    // paths and cleans up so it doesn't touch the user's real secrets.enc.
+    const secrets = `/tmp/openfusion-test-secrets-keyed-${process.pid}.enc`;
+    const keyPath = `/tmp/openfusion-test-master-keyed-${process.pid}.key`;
+    try {
+      setProviderKey("ollama-cloud", "test-key-abc", secrets, keyPath);
+      const report = isConfigured(
+        cfg(
+          [
+            { id: "c1", provider: "ollama-cloud", model: "gpt-oss:120b", enabled: true },
+            { id: "c2", provider: "ollama-cloud", model: "gpt-oss:20b", enabled: true },
+          ],
+          [{ provider: "ollama-cloud", model: "gpt-oss:120b", enabled: true }],
+        ),
+        secrets,
+        keyPath,
+      );
+      expect(report.configured).toBe(true);
+    } finally {
+      rmSync(secrets, { force: true });
+      rmSync(keyPath, { force: true });
+    }
   });
 });

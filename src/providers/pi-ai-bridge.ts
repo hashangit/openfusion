@@ -83,10 +83,18 @@ export function listModels(provider: string) {
 }
 
 /**
- * Resolve the effective API key for a provider. Keyless providers (e.g. rapid-mlx)
- * that have no stored key get a sentinel value so pi-ai doesn't reject the call;
- * all others pass through the stored key unchanged.
+ * Resolve the effective API key for a provider for the COMPLETION path. pi-ai's
+ * openai-completions provider throws on a falsy apiKey, so keyless providers
+ * (e.g. rapid-mlx) that have no stored key get a module-private sentinel — the
+ * local server ignores it. Everyone else passes through their stored key.
  * If a keyless provider has a stored key (user explicitly saved one), respect it.
+ *
+ * NOTE: this sentinel is intentionally NOT exported and is never compared
+ * against outside this module. Discovery (/v1/models) routes auth through
+ * KEYLESS_PROVIDERS directly (see server/api/providers.ts) and sends no
+ * Authorization header for keyless providers, so the two paths don't share the
+ * magic string. Callers MUST treat the returned value as opaque and must never
+ * compare it against literals or branch on its contents.
  */
 export function effectiveApiKey(provider: string, storedKey: string | undefined): string {
   if (KEYLESS_PROVIDERS.has(provider) && !storedKey) return NO_KEY_SENTINEL;
@@ -185,23 +193,15 @@ export class BridgeError extends Error {
 }
 
 /**
- * Register custom provider base descriptors with pi-ai so listProviders() works.
- * Custom models are registered dynamically via registerCustomModel() when the user
- * selects a discovered model or types a model ID. Called once at startup.
- */
-export function registerCustomProviders(): void {
-  // No static models to register — they're discovered at runtime.
-  // This function is kept as a no-op placeholder for future static registrations
-  // and to maintain the startup call site in index.ts / ui-only.ts.
-}
-
-/**
  * Register all custom provider models referenced in a config (candidates + judges).
  * This must be called at startup after loading the config so that resolveModel()
  * works for custom providers like rapid-mlx and ollama-cloud. Without this, a
  * fusion request fails because the models were never registered — they only get
  * registered when the UI calls /api/providers/:provider/models, which may not
  * have happened yet.
+ *
+ * Note: listProviders() already returns custom provider ids via CUSTOM_PROVIDERS,
+ * so there is no separate "register providers" step — only models need registering.
  */
 export function registerConfigModels(config: { candidates: Array<{ provider: string; model: string }>; judges: Array<{ provider: string; model: string }> }): void {
   const entries = [...config.candidates, ...config.judges];

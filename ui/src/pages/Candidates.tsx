@@ -1,18 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type AppConfig, type CandidateSlot, type ProviderInfo, type ProviderModel } from "../api";
-
-/** Merge two model lists, deduplicating by id. Keeps the entry from `b` on conflict. */
-function mergeModelLists(a: ProviderModel[], b: ProviderModel[]): ProviderModel[] {
-  const seen = new Set<string>();
-  const result: ProviderModel[] = [];
-  for (const m of a) {
-    if (!seen.has(m.id)) { seen.add(m.id); result.push(m); }
-  }
-  for (const m of b) {
-    if (!seen.has(m.id)) { seen.add(m.id); result.push(m); }
-  }
-  return result;
-}
+import { mergeModelLists } from "../lib/models.js";
 
 /**
  * Serial time budget in minutes (feature 007). Mirrors the engine constants in
@@ -61,27 +49,29 @@ export function CandidatesPage({
     void api.getProviders().then((r) => setProviderList(r.providers));
   }, []);
 
-  // Eagerly load models for all providers referenced in the current config.
-  // This ensures saved model names appear immediately, not as "Focus to load…".
-  useEffect(() => {
-    if (!config) return;
-    const providers = new Set<string>();
-    for (const c of config.candidates) providers.add(c.provider);
-    for (const j of config.judges) providers.add(j.provider);
-    for (const p of providers) {
-      void loadModels(p);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config]);
-
+  // Models are loaded lazily — on focus of the model dropdown (or when the
+  // provider changes). We do NOT eagerly fetch on mount: that would fire a
+  // live network call (with up to a 10s timeout) to every referenced custom
+  // provider on every page visit, hanging the UI when a local server is down.
+  // A saved model is always shown via the displayModels prepend below, so it
+  // doesn't need the full list to be loaded first.
   const loadModels = async (provider: string) => {
-    if (modelsByProvider[provider]) return;
+    if (modelsByProvider[provider] !== undefined) return;
     setLoadingProvider(provider);
     try {
       const r = await api.getModels(provider);
+      // On a discovery failure (auth rejected / server unreachable) the server
+      // returns { models: [], error }. Surface the error but DON'T cache the
+      // empty list — leaving modelsByProvider[provider] undefined lets a later
+      // focus retry, instead of permanently poisoning the cache (a [] is truthy
+      // and would short-circuit the guard above forever).
+      if (r.error) {
+        setMsg(r.error);
+        return;
+      }
       setModelsByProvider((m) => ({ ...m, [provider]: r.models }));
-    } catch {
-      /* ignore */
+    } catch (e) {
+      setMsg(`Failed to load models for ${provider}: ${(e as Error).message}`);
     } finally {
       setLoadingProvider(null);
     }
@@ -213,6 +203,7 @@ export function CandidatesPage({
           const pInfo = providerMap.get(c.provider);
           const isLocal = pInfo?.local ?? false;
           const models = modelsByProvider[c.provider] ?? [];
+          const loaded = modelsByProvider[c.provider] !== undefined;
           const isLoading = loadingProvider === c.provider;
           const discovered = discoveredByProvider[c.provider] ?? [];
           // For local discoverable providers, merge discovered models into the list.
@@ -274,9 +265,10 @@ export function CandidatesPage({
                   className="field flex-1"
                   value={c.model}
                   onChange={(e) => update(c.id, { model: e.target.value })}
+                  onFocus={() => void loadModels(c.provider)}
                 >
                   <option value="">
-                    {isLoading ? "Loading…" : displayModels.length ? "Select a model…" : "No models found"}
+                    {isLoading ? "Loading…" : !loaded ? "Focus to load…" : displayModels.length ? "Select a model…" : "No models found"}
                   </option>
                   {displayModels.map((m) => (
                     <option key={m.id} value={m.id}>

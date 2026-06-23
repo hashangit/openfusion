@@ -1,20 +1,30 @@
 // Custom provider definitions for OpenFusion.
 //
-// pi-ai's static registry covers cloud providers, but local/OpenAI-compatible
-// endpoints (like rapid-mlx and ollama-cloud) aren't in that registry. This
-// module defines them so they appear in the web config dropdowns and resolve
-// correctly at fusion time.
+// pi-ai's static registry covers the well-known cloud providers, but two
+// OpenAI-compatible endpoints aren't in it: rapid-mlx (a LOCAL MLX inference
+// server on Apple Silicon) and ollama-cloud (Ollama's hosted CLOUD API). This
+// module defines both so they appear in the web config dropdowns and resolve
+// correctly at fusion time. Despite the branch name ("local-providers"), this
+// feature intentionally covers BOTH a local server and a cloud provider.
 //
-// Both custom providers are discoverable — they support the /v1/models endpoint
+// Both custom providers are discoverable — they expose a /v1/models endpoint
 // so the server can fetch the actual available models at runtime. No hardcoded
 // model lists: rapid-mlx's models depend on what's loaded locally, and
 // ollama-cloud's catalog changes as Ollama adds new cloud models.
 //
-// The `local` flag distinguishes local servers (may be unreachable, show
-// free-text input) from cloud providers (always reachable, show dropdown).
+// The `local` flag distinguishes local servers (may be unreachable, so the UI
+// shows a free-text input + a Discover button to retry) from cloud providers
+// (always reachable, show a normal dropdown).
 //
-// At runtime, registerCustomProviders() registers static model descriptors with
-// the pi-ai bridge so resolveModel() works. For discovered or user-typed models,
+// KNOWN LIMITATION: buildModelDescriptor() bakes in default contextWindow
+// (131072) and maxTokens (8192) for every discovered/typed model, because the
+// OpenAI /v1/models response doesn't carry those fields. Cost is reported as 0
+// for the same reason. If a provider under-reports, the dashboard's per-model
+// context badge may be inaccurate; this does not affect fusion correctness.
+//
+// At runtime, registerConfigModels() (called at startup + after each config
+// save) registers descriptors for models referenced in the saved config so
+// resolveModel() works. For discovered or user-typed models,
 // registerCustomModel() is called on the fly.
 import type { AnyModel } from "./pi-ai-bridge.js";
 

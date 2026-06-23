@@ -151,8 +151,11 @@ export const api = {
   putSecret: (provider: string, apiKey: string | null) =>
     sendJSON<SecretsView>("PUT", "/api/secrets", { provider, apiKey }),
   getProviders: () => getJSON<{ providers: ProviderInfo[] }>("/api/providers"),
+  // `error` is present when discovery was attempted but failed (provider
+  // unreachable or auth rejected) — lets the UI distinguish "no models" from
+  // "couldn't reach the provider" (Constitution V: no silent failures).
   getModels: (provider: string) =>
-    getJSON<{ models: ProviderModel[] }>(`/api/providers/${encodeURIComponent(provider)}/models`),
+    getJSON<{ models: ProviderModel[]; error?: string }>(`/api/providers/${encodeURIComponent(provider)}/models`),
   /** Discover models from a custom provider's /v1/models endpoint. */
   discoverModels: (provider: string) =>
     getJSON<{ models: string[] }>(`/api/providers/${encodeURIComponent(provider)}/discover`),

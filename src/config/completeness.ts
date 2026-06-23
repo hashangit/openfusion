@@ -1,6 +1,13 @@
 // The configuration gate (Constitution VI).
 // isConfigured() = >=2 ENABLED candidates (<=5 unless benchmarkMode) +
-// >=1 ENABLED judge + a key for every referenced provider.
+// >=1 ENABLED judge + a key for every referenced provider that needs one.
+//
+// Keyless providers (e.g. the local rapid-mlx server) are EXEMPT from the
+// "key for every referenced provider" clause: they run without auth, so
+// requiring a stored key would block a valid local-only setup. This does not
+// weaken the gate — keyed providers (e.g. ollama-cloud) are still required to
+// have a stored key, and the >=2 candidates / >=1 judge rules are untouched.
+// See tests/custom-providers.test.ts "completeness gate with keyless providers".
 import type { RawConfig } from "./schema.js";
 import { referencedProviders, loadSecrets } from "./secrets.js";
 import { paths } from "../util/paths.js";

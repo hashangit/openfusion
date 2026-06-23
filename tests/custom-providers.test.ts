@@ -7,6 +7,7 @@ import {
   registerCustomProviders,
   clearModelDescriptors,
   registerCustomModel,
+  registerConfigModels,
   effectiveApiKey,
 } from "../src/providers/pi-ai-bridge.js";
 import {
@@ -158,5 +159,64 @@ describe("custom providers: completeness gate", () => {
     const needsKey = referenced.filter((p) => !KEYLESS_PROVIDERS.has(p));
     // rapid-mlx is keyless, so only openai needs a key.
     expect(needsKey).toEqual(["openai"]);
+  });
+});
+
+describe("custom providers: registerConfigModels", () => {
+  // registerConfigModels is imported with registerCustomProviders above.
+  // It must be called AFTER registerCustomProviders (which is done in beforeEach).
+
+  it("registers custom provider models from config so resolveModel works", () => {
+    registerConfigModels({
+      candidates: [
+        { id: "c1", provider: "rapid-mlx", model: "mlx-community/Qwen3-35B-A3B-OptiQ-4bit", enabled: true },
+        { id: "c2", provider: "ollama-cloud", model: "gpt-oss:120b-cloud", enabled: true },
+        { id: "c3", provider: "openai", model: "gpt-4o", enabled: true },
+      ],
+      judges: [
+        { provider: "rapid-mlx", model: "mlx-community/Qwen3-35B-A3B-OptiQ-4bit", enabled: true },
+      ],
+    });
+    // rapid-mlx model should now resolve.
+    const rapidModel = resolveModel("rapid-mlx", "mlx-community/Qwen3-35B-A3B-OptiQ-4bit");
+    expect(rapidModel.provider).toBe("rapid-mlx");
+    expect(rapidModel.baseUrl).toBe("http://localhost:8000/v1");
+
+    // ollama-cloud model should now resolve.
+    const ollamaModel = resolveModel("ollama-cloud", "gpt-oss:120b-cloud");
+    expect(ollamaModel.provider).toBe("ollama-cloud");
+    expect(ollamaModel.baseUrl).toBe("https://ollama.com/v1");
+
+    // Built-in provider model should still work (not affected by registerConfigModels).
+    const openaiModel = resolveModel("openai", "gpt-4o");
+    expect(openaiModel.provider).toBe("openai");
+  });
+
+  it("skips entries with empty model strings", () => {
+    clearModelDescriptors();
+    registerCustomProviders();
+    registerConfigModels({
+      candidates: [
+        { id: "c1", provider: "rapid-mlx", model: "", enabled: true },
+      ],
+      judges: [],
+    });
+    // Should not throw; empty model is simply skipped.
+    expect(() => resolveModel("rapid-mlx", "")).toThrow();
+  });
+
+  it("skips providers that are not custom", () => {
+    clearModelDescriptors();
+    registerCustomProviders();
+    // openai is a built-in provider, not a custom one — registerConfigModels should skip it.
+    registerConfigModels({
+      candidates: [
+        { id: "c1", provider: "openai", model: "gpt-4o", enabled: true },
+      ],
+      judges: [],
+    });
+    // gpt-4o resolves via pi-ai's built-in registry, not via modelOverrides.
+    const model = resolveModel("openai", "gpt-4o");
+    expect(model.provider).toBe("openai");
   });
 });

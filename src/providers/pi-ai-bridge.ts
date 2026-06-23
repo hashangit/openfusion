@@ -194,3 +194,20 @@ export function registerCustomProviders(): void {
   // This function is kept as a no-op placeholder for future static registrations
   // and to maintain the startup call site in index.ts / ui-only.ts.
 }
+
+/**
+ * Register all custom provider models referenced in a config (candidates + judges).
+ * This must be called at startup after loading the config so that resolveModel()
+ * works for custom providers like rapid-mlx and ollama-cloud. Without this, a
+ * fusion request fails because the models were never registered — they only get
+ * registered when the UI calls /api/providers/:provider/models, which may not
+ * have happened yet.
+ */
+export function registerConfigModels(config: { candidates: Array<{ provider: string; model: string }>; judges: Array<{ provider: string; model: string }> }): void {
+  const entries = [...config.candidates, ...config.judges];
+  for (const { provider, model } of entries) {
+    if (CUSTOM_PROVIDERS[provider] && model) {
+      registerCustomModel(provider, model);
+    }
+  }
+}

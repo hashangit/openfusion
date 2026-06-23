@@ -1,6 +1,11 @@
 # ---- Dependencies ----
 node_modules/
 ui/node_modules/
+# This is a pnpm project — pnpm-lock.yaml is the source of truth.
+# Ignore npm's lockfile so an accidental `npm install` can't reintroduce a
+# second, divergent dependency graph (see CONTRIBUTING: "use pnpm, not npm").
+package-lock.json
+ui/package-lock.json
 
 # ---- Build output ----
 dist/

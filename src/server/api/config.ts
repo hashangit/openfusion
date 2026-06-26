@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { loadConfig, saveConfig, mergeAndValidate, emptyConfig } from "../../config/store.js";
 import { isConfigured } from "../../config/completeness.js";
+import { registerConfigModels } from "../../providers/pi-ai-bridge.js";
 
 export function configRouter(): Router {
   const r = Router();
@@ -21,6 +22,9 @@ export function configRouter(): Router {
     const merged = mergeAndValidate(loadConfig(), req.body);
     saveConfig(merged);
     const config = loadConfig();
+    // Re-register custom provider models so resolveModel() works for the
+    // newly-saved providers without requiring a page reload or /models call.
+    registerConfigModels(config);
     res.json({ ...config, configured: isConfigured(config).configured });
   });
 

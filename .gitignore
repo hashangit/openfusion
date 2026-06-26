@@ -1,6 +1,11 @@
 # ---- Dependencies ----
 node_modules/
 ui/node_modules/
+# This is a pnpm project — pnpm-lock.yaml is the source of truth.
+# Ignore npm's lockfile so an accidental `npm install` can't reintroduce a
+# second, divergent dependency graph (see CONTRIBUTING: "use pnpm, not npm").
+package-lock.json
+ui/package-lock.json
 
 # ---- Build output ----
 dist/
@@ -44,6 +49,9 @@ Thumbs.db
 .cursor/
 .codeium/
 .aider*
+# CONTEXT.md is a local session-continuity aid (per CLAUDE.md), not part of
+# the repo — keep it local-only so it never lands in a PR.
+CONTEXT.md
 # speckit: keep specs/ + memory + templates; ignore only ephemeral state
 .specify/artifacts/
 .specify/cache/

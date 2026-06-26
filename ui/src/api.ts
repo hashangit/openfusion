@@ -30,12 +30,24 @@ export interface Persona {
 export interface SecretsView {
   providers: Record<string, { present: boolean; hint: string | null }>;
   referenced: string[];
+  /** Provider ids that don't require an API key (e.g. rapid-mlx). */
+  keyless: string[];
 }
 export interface ProviderModel {
   id: string;
   contextWindow?: number;
   reasoning?: boolean | string;
   cost?: { input?: number; output?: number };
+}
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  description?: string;
+  keyless: boolean;
+  /** Whether this provider supports /v1/models discovery. */
+  discoverable: boolean;
+  /** Whether this is a local provider that may be unreachable. */
+  local: boolean;
 }
 export interface TestResult {
   ok: boolean;
@@ -138,9 +150,15 @@ export const api = {
   getSecrets: () => getJSON<SecretsView>("/api/secrets"),
   putSecret: (provider: string, apiKey: string | null) =>
     sendJSON<SecretsView>("PUT", "/api/secrets", { provider, apiKey }),
-  getProviders: () => getJSON<{ providers: string[] }>("/api/providers"),
+  getProviders: () => getJSON<{ providers: ProviderInfo[] }>("/api/providers"),
+  // `error` is present when discovery was attempted but failed (provider
+  // unreachable or auth rejected) — lets the UI distinguish "no models" from
+  // "couldn't reach the provider" (Constitution V: no silent failures).
   getModels: (provider: string) =>
-    getJSON<{ models: ProviderModel[] }>(`/api/providers/${encodeURIComponent(provider)}/models`),
+    getJSON<{ models: ProviderModel[]; error?: string }>(`/api/providers/${encodeURIComponent(provider)}/models`),
+  /** Discover models from a custom provider's /v1/models endpoint. */
+  discoverModels: (provider: string) =>
+    getJSON<{ models: string[] }>(`/api/providers/${encodeURIComponent(provider)}/discover`),
   testProvider: (provider: string, model: string, apiKey: string) =>
     sendJSON<TestResult>("POST", "/api/test", { provider, model, apiKey }),
   getStats: (filters?: Record<string, string>) => {

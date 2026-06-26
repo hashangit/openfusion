@@ -11,6 +11,14 @@ import {
   type Api,
 } from "@earendil-works/pi-ai";
 import type { Model } from "@earendil-works/pi-ai";
+import { CUSTOM_PROVIDERS, KEYLESS_PROVIDERS, buildModelDescriptor } from "./custom-providers.js";
+
+/**
+ * Sentinel API key for providers that don't require authentication (e.g. rapid-mlx).
+ * pi-ai's OpenAI completions provider throws if apiKey is falsy; this sentinel
+ * satisfies the check while the local server ignores it.
+ */
+const NO_KEY_SENTINEL = "no-key";
 
 /** The model shape used throughout OpenFusion (a pi-ai Model with a broad Api). */
 export type AnyModel = Model<Api>;
@@ -47,13 +55,18 @@ export function resolveModel(provider: string, model: string): AnyModel {
   }
 }
 
-/** List provider ids (for the UI dropdowns). */
+/** List provider ids (for the UI dropdowns). Includes pi-ai's built-in + custom providers. */
 export function listProviders(): string[] {
-  return getProviders() as string[];
+  const builtIn = getProviders() as string[];
+  const customIds = Object.keys(CUSTOM_PROVIDERS);
+  // Custom providers that aren't already in pi-ai's registry (avoid duplicates).
+  const added = customIds.filter((id) => !builtIn.includes(id));
+  return [...builtIn, ...added];
 }
 
-/** List models for a provider (for the UI dropdowns). */
+/** List models for a provider (for the UI dropdowns). Built-in only; custom providers use discovery. */
 export function listModels(provider: string) {
+  // Built-in pi-ai provider — delegate to the static registry.
   // May throw if provider unknown — let callers wrap.
   const models = getModels(provider as never) as Array<{
     id: string;
@@ -67,6 +80,37 @@ export function listModels(provider: string) {
     reasoning: m.reasoning,
     cost: m.cost,
   }));
+}
+
+/**
+ * Resolve the effective API key for a provider for the COMPLETION path. pi-ai's
+ * openai-completions provider throws on a falsy apiKey, so keyless providers
+ * (e.g. rapid-mlx) that have no stored key get a module-private sentinel — the
+ * local server ignores it. Everyone else passes through their stored key.
+ * If a keyless provider has a stored key (user explicitly saved one), respect it.
+ *
+ * NOTE: this sentinel is intentionally NOT exported and is never compared
+ * against outside this module. Discovery (/v1/models) routes auth through
+ * KEYLESS_PROVIDERS directly (see server/api/providers.ts) and sends no
+ * Authorization header for keyless providers, so the two paths don't share the
+ * magic string. Callers MUST treat the returned value as opaque and must never
+ * compare it against literals or branch on its contents.
+ */
+export function effectiveApiKey(provider: string, storedKey: string | undefined): string {
+  if (KEYLESS_PROVIDERS.has(provider) && !storedKey) return NO_KEY_SENTINEL;
+  return storedKey ?? "";
+}
+
+/**
+ * Register a model for a custom provider at runtime (e.g. after discovery or
+ * when the user types a model ID). Also registers the descriptor with pi-ai
+ * so resolveModel() works at fusion time.
+ */
+export function registerCustomModel(provider: string, modelId: string): void {
+  const def = CUSTOM_PROVIDERS[provider];
+  if (!def) return; // Not a custom provider — ignore (built-in providers use pi-ai's registry).
+  const descriptor = buildModelDescriptor(def, modelId);
+  registerModelDescriptor(provider, modelId, descriptor);
 }
 
 /** Run a single non-streaming completion. The single-shot worker + both judge steps use this. */
@@ -145,5 +189,29 @@ export class BridgeError extends Error {
     super(message);
     this.name = "BridgeError";
     this.code = code;
+  }
+}
+
+/**
+ * Register all custom provider models referenced in a config (candidates + judges).
+ * This must be called at startup after loading the config so that resolveModel()
+ * works for custom providers like rapid-mlx and ollama-cloud. Without this, a
+ * fusion request fails because the models were never registered — they only get
+ * registered when the UI calls /api/providers/:provider/models, which may not
+ * have happened yet.
+ *
+ * Note: listProviders() already returns custom provider ids via CUSTOM_PROVIDERS,
+ * so there is no separate "register providers" step — only models need registering.
+ */
+export function registerConfigModels(config: { candidates?: Array<{ provider: string; model: string }>; judges?: Array<{ provider: string; model: string }> }): void {
+  // candidates/judges are optional in the param type for defensive robustness.
+  // In practice loadConfig()'s zod schema (RawConfigSchema) always defaults
+  // these to [], so the real startup path never passes undefined — but this is
+  // a public export, so tolerate a partial/empty config without crashing.
+  const entries = [...(config?.candidates ?? []), ...(config?.judges ?? [])];
+  for (const { provider, model } of entries) {
+    if (CUSTOM_PROVIDERS[provider] && model) {
+      registerCustomModel(provider, model);
+    }
   }
 }

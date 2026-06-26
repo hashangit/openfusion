@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type AppConfig, type CandidateSlot, type ProviderModel } from "../api";
+import { api, type AppConfig, type CandidateSlot, type ProviderInfo, type ProviderModel } from "../api";
+import { mergeModelLists } from "../lib/models.js";
 
 /**
  * Serial time budget in minutes (feature 007). Mirrors the engine constants in
@@ -23,10 +24,21 @@ export function CandidatesPage({
   const [candidates, setCandidates] = useState<CandidateSlot[]>([]);
   const [benchmark, setBenchmark] = useState(false);
   const [sequential, setSequential] = useState(false);
-  const [providers, setProviders] = useState<string[]>([]);
+  const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<Record<string, ProviderModel[]>>({});
+  // Per-provider loading flags so concurrent loads (e.g. switching the provider
+  // select while another is still fetching) don't clobber each other's indicator,
+  // and to guard against duplicate in-flight requests for the same provider.
+  const [loadingProviders, setLoadingProviders] = useState<Record<string, boolean>>({});
+  /** Discovered model IDs for local providers (keyed by provider). */
+  const [discoveredByProvider, setDiscoveredByProvider] = useState<Record<string, string[]>>({});
+  const [discovering, setDiscovering] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  // Provider id list for dropdowns.
+  const providers = providerList.map((p) => p.id);
+  const providerMap = new Map(providerList.map((p) => [p.id, p]));
 
   useEffect(() => {
     if (config) {
@@ -37,16 +49,48 @@ export function CandidatesPage({
   }, [config]);
 
   useEffect(() => {
-    void api.getProviders().then((r) => setProviders(r.providers));
+    void api.getProviders().then((r) => setProviderList(r.providers));
   }, []);
 
+  // Models are loaded lazily — on focus of the model dropdown (or when the
+  // provider changes). We do NOT eagerly fetch on mount: that would fire a
+  // live network call (with up to a 10s timeout) to every referenced custom
+  // provider on every page visit, hanging the UI when a local server is down.
+  // A saved model is always shown via the displayModels prepend below, so it
+  // doesn't need the full list to be loaded first.
   const loadModels = async (provider: string) => {
-    if (modelsByProvider[provider]) return;
+    // Skip if already loaded OR already in flight (prevents duplicate concurrent
+    // requests for the same provider on rapid focus/switch).
+    if (modelsByProvider[provider] !== undefined || loadingProviders[provider]) return;
+    setLoadingProviders((lp) => ({ ...lp, [provider]: true }));
     try {
       const r = await api.getModels(provider);
+      // On a discovery failure (auth rejected / server unreachable) the server
+      // returns { models: [], error }. Surface the error but DON'T cache the
+      // empty list — leaving modelsByProvider[provider] undefined lets a later
+      // focus retry, instead of permanently poisoning the cache (a [] is truthy
+      // and would short-circuit the guard above forever).
+      if (r.error) {
+        setMsg(r.error);
+        return;
+      }
       setModelsByProvider((m) => ({ ...m, [provider]: r.models }));
-    } catch {
-      /* ignore */
+    } catch (e) {
+      setMsg(`Failed to load models for ${provider}: ${(e as Error).message}`);
+    } finally {
+      setLoadingProviders((lp) => ({ ...lp, [provider]: false }));
+    }
+  };
+
+  const discoverModels = async (provider: string) => {
+    setDiscovering(provider);
+    try {
+      const r = await api.discoverModels(provider);
+      setDiscoveredByProvider((d) => ({ ...d, [provider]: r.models }));
+    } catch (e) {
+      setMsg(`Discovery failed: ${(e as Error).message}`);
+    } finally {
+      setDiscovering(null);
     }
   };
 
@@ -161,7 +205,20 @@ export function CandidatesPage({
 
       <div className="space-y-2">
         {candidates.map((c, i) => {
+          const pInfo = providerMap.get(c.provider);
+          const isLocal = pInfo?.local ?? false;
           const models = modelsByProvider[c.provider] ?? [];
+          const loaded = modelsByProvider[c.provider] !== undefined;
+          const isLoading = !!loadingProviders[c.provider];
+          const discovered = discoveredByProvider[c.provider] ?? [];
+          // For local discoverable providers, merge discovered models into the list.
+          const allModels: ProviderModel[] = isLocal && discovered.length > 0
+            ? mergeModelLists(discovered.map((id) => ({ id })), models)
+            : models;
+          // If the saved model isn't in the list yet, add it as an option so it's visible.
+          const displayModels = c.model && !allModels.some((m) => m.id === c.model)
+            ? [{ id: c.model }, ...allModels]
+            : allModels;
           return (
             <div key={c.id} className={`glass-soft flex items-center gap-3 p-3 ${c.enabled ? "" : "opacity-50"}`}>
               <span className="grid h-7 w-7 place-items-center rounded-full bg-white/10 text-xs">{i + 1}</span>
@@ -177,26 +234,55 @@ export function CandidatesPage({
                 value={c.provider}
                 onChange={(e) => update(c.id, { provider: e.target.value, model: "" })}
               >
-                {providers.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
+                {providerList.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
               </select>
-              <select
-                className="field flex-1"
-                value={c.model}
-                onChange={(e) => update(c.id, { model: e.target.value })}
-                onFocus={() => void loadModels(c.provider)}
-              >
-                <option value="">{models.length ? "Select a model…" : "Focus to load…"}</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.id}
-                    {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
+              {isLocal ? (
+                /* Local discoverable providers: free-text input + Discover button */
+                <div className="flex flex-1 items-center gap-2">
+                  <input
+                    className="field flex-1"
+                    type="text"
+                    list={`models-${c.provider}`}
+                    placeholder={discovered.length ? "Select or type a model…" : "Type a model ID…"}
+                    value={c.model}
+                    onChange={(e) => update(c.id, { model: e.target.value })}
+                  />
+                  <datalist id={`models-${c.provider}`}>
+                    {discovered.map((id) => (
+                      <option key={id} value={id} />
+                    ))}
+                  </datalist>
+                  <button
+                    className="btn text-xs whitespace-nowrap"
+                    onClick={() => void discoverModels(c.provider)}
+                    disabled={discovering === c.provider}
+                  >
+                    {discovering === c.provider ? "Discovering…" : "Discover"}
+                  </button>
+                </div>
+              ) : (
+                /* Built-in and cloud providers: dropdown with saved model always visible */
+                <select
+                  className="field flex-1"
+                  value={c.model}
+                  onChange={(e) => update(c.id, { model: e.target.value })}
+                  onFocus={() => void loadModels(c.provider)}
+                >
+                  <option value="">
+                    {isLoading ? "Loading…" : !loaded ? "Focus to load…" : displayModels.length ? "Select a model…" : "No models found"}
                   </option>
-                ))}
-              </select>
+                  {displayModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id}
+                      {m.contextWindow ? ` · ${Math.round(m.contextWindow / 1000)}k ctx` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button className="btn" onClick={() => remove(c.id)}>
                 Remove
               </button>

@@ -12,6 +12,7 @@ export function ApiKeysPage({ config }: { config: AppConfig | null }) {
   useEffect(refresh, [config]);
 
   const referenced = secrets?.referenced ?? [];
+  const keyless = new Set(secrets?.keyless ?? []);
 
   const save = async (provider: string) => {
     setMsg(null);
@@ -57,11 +58,16 @@ export function ApiKeysPage({ config }: { config: AppConfig | null }) {
         {referenced.map((p) => {
           const entry = secrets?.providers[p];
           const result = results[p];
+          const isKeyless = keyless.has(p);
           return (
             <div key={p} className="glass-soft p-4">
               <div className="mb-2 flex items-center justify-between">
                 <span className="font-medium">{p}</span>
-                {entry?.present ? (
+                {isKeyless ? (
+                  <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-xs text-sky-300">
+                    not required
+                  </span>
+                ) : entry?.present ? (
                   <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
                     set · {entry.hint}
                   </span>
@@ -69,21 +75,27 @@ export function ApiKeysPage({ config }: { config: AppConfig | null }) {
                   <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-300">missing</span>
                 )}
               </div>
-              <div className="flex gap-2">
-                <input
-                  className="field flex-1"
-                  type="password"
-                  placeholder={entry?.present ? "Enter a new key to replace…" : "Paste API key…"}
-                  value={drafts[p] ?? ""}
-                  onChange={(e) => setDrafts((d) => ({ ...d, [p]: e.target.value }))}
-                />
-                <button className="btn" onClick={() => void test(p)} disabled={testing === p || !(drafts[p])}>
-                  {testing === p ? "Testing…" : "Test"}
-                </button>
-                <button className="btn btn-primary" onClick={() => void save(p)} disabled={!drafts[p]}>
-                  Save
-                </button>
-              </div>
+              {isKeyless ? (
+                <p className="text-xs text-white/50">
+                  This provider runs locally and does not require an API key.
+                </p>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    className="field flex-1"
+                    type="password"
+                    placeholder={entry?.present ? "Enter a new key to replace…" : "Paste API key…"}
+                    value={drafts[p] ?? ""}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [p]: e.target.value }))}
+                  />
+                  <button className="btn" onClick={() => void test(p)} disabled={testing === p || !(drafts[p])}>
+                    {testing === p ? "Testing…" : "Test"}
+                  </button>
+                  <button className="btn btn-primary" onClick={() => void save(p)} disabled={!drafts[p]}>
+                    Save
+                  </button>
+                </div>
+              )}
               {result && (
                 <p className={`mt-2 text-xs ${result.ok ? "text-emerald-300" : "text-red-300"}`}>
                   {result.ok

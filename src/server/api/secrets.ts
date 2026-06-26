@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { loadConfig } from "../../config/store.js";
 import { maskedPresence, setProviderKey } from "../../config/secrets.js";
+import { KEYLESS_PROVIDERS } from "../../providers/custom-providers.js";
 
 export function secretsRouter(): Router {
   const r = Router();
@@ -9,7 +10,10 @@ export function secretsRouter(): Router {
   // Masked presence only — NEVER the raw key.
   r.get("/", (_req, res) => {
     const config = loadConfig();
-    res.json(maskedPresence(config));
+    const result = maskedPresence(config);
+    // Annotate keyless providers so the UI can skip/hide their key input.
+    const keyless = [...KEYLESS_PROVIDERS];
+    res.json({ ...result, keyless });
   });
 
   // Set (or clear with null/empty) one provider's key. Encrypted before write.

@@ -7,8 +7,17 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { createMcpServer } from "./server/mcp-server.js";
 import { startUiServer } from "./server/ui-server.js";
 import { printStartupBanner } from "./util/startup.js";
+import { registerConfigModels } from "./providers/pi-ai-bridge.js";
+import { loadConfig } from "./config/store.js";
 
 async function main(): Promise<void> {
+  // Register any custom provider models referenced by the saved config so
+  // resolveModel() works at fusion time without requiring a prior UI /models
+  // call. loadConfig() returns an empty config (no throw) when the file is
+  // absent (first run), so a genuinely corrupt config.json fails loudly here
+  // rather than being silently swallowed.
+  registerConfigModels(loadConfig());
+
   // First-run banner (stderr) + auto-open the dashboard on a fresh install.
   await printStartupBanner();
 

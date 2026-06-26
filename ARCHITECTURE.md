@@ -61,7 +61,7 @@ openfusion/
 │   │   ├── schema.ts       # zod schemas: candidates, judge, settings
 │   │   ├── store.ts        # read/write config.json + secrets.enc
 │   │   ├── crypto.ts       # AES-256-GCM, machine-bound master.key
-│   │   └── completeness.ts # isConfigured(): ≥2 candidates, judge set, all keys present
+│   │   └── completeness.ts # isConfigured(): ≥2 candidates, judge set, key for each referenced provider that needs one (keyless providers exempt)
 │   ├── providers/
 │   │   └── pi-ai-bridge.ts # getModel() + complete() wrapper; injects apiKey per call
 │   ├── store/
@@ -103,7 +103,7 @@ Progress emitted via `extra.sendNotification({ method: "notifications/progress",
 - **`secrets.enc`** (AES-256-GCM encrypted): `{ providers: { openai: {apiKey}, anthropic: {apiKey}, ... } }` — **one key per provider**, shared across all candidate slots + judge that use it (e.g. one OPENAI key, not one per slot).
 - **`master.key`** — random 256-bit key generated on first run, `chmod 600`. Machine-bound; used to encrypt/decrypt `secrets.enc`. (Simpler + sufficient for a local single-user tool; avoids native keychain deps.)
 
-`isConfigured()` = `candidates.length ≥ 2 && judge set && every referenced provider has a key`. Minimum **2**, maximum **5** candidates (enforced in schema + UI).
+`isConfigured()` = `candidates.length ≥ 2 && judge set && every referenced provider that needs a key has one` (keyless providers — e.g. the local `rapid-mlx` server — are exempt; keyed providers like `ollama-cloud` are not). Minimum **2**, maximum **5** candidates (enforced in schema + UI).
 
 ## Provider Layer (`@earendil-works/pi-ai`)
 
@@ -132,8 +132,9 @@ All on `127.0.0.1` only (holds keys — never expose externally). No CORS (same-
 | GET / PUT | `/api/config` | Read/write `config.json` (model choices + settings) |
 | GET | `/api/secrets` | Masked key **presence** per provider (never the raw key) |
 | PUT | `/api/secrets` | Set a provider's key (encrypted before write) |
-| GET | `/api/providers` | pi-ai `getProviders()` |
-| GET | `/api/providers/:p/models` | pi-ai `getModels(p)` |
+| GET | `/api/providers` | all providers (pi-ai built-ins + custom providers) with metadata |
+| GET | `/api/providers/:p/models` | pi-ai `getModels(p)` for built-ins; live `/v1/models` discovery for discoverable custom providers (returns `{models, error?}` on failure) |
+| GET | `/api/providers/:p/discover` | explicit retry for local discoverable providers (502 `{error}` on failure) |
 | POST | `/api/test` | Tiny pi-ai ping to validate a provider+model+key before save |
 | GET | `/api/stats` | Aggregated dashboard data (KPIs + by-model/by-day) |
 | GET | `/api/activity` | Paginated activity log, expandable to sub-calls |

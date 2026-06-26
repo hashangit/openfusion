@@ -49,6 +49,9 @@ Thumbs.db
 .cursor/
 .codeium/
 .aider*
+# CONTEXT.md is a local session-continuity aid (per CLAUDE.md), not part of
+# the repo — keep it local-only so it never lands in a PR.
+CONTEXT.md
 # speckit: keep specs/ + memory + templates; ignore only ephemeral state
 .specify/artifacts/
 .specify/cache/

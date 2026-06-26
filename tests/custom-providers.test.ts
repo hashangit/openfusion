@@ -1,5 +1,5 @@
 // Tests for custom provider registration, discovery, and keyless provider handling.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   listProviders,
   listModels,
@@ -15,6 +15,7 @@ import {
   OLLAMA_CLOUD,
   KEYLESS_PROVIDERS,
   buildModelDescriptor,
+  discoverModels,
 } from "../src/providers/custom-providers.js";
 import { isConfigured } from "../src/config/completeness.js";
 import { setProviderKey } from "../src/config/secrets.js";
@@ -293,5 +294,68 @@ describe("custom providers: completeness gate with keyless providers", () => {
       rmSync(secrets, { force: true });
       rmSync(keyPath, { force: true });
     }
+  });
+});
+
+describe("custom providers: discoverModels", () => {
+  // The only genuinely new runtime behavior in the feature: a live fetch to a
+  // provider's /v1/models, then defensive parsing. Mock globalThis.fetch so the
+  // suite never makes a real network call (CONTRIBUTING: no real API calls).
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("(a) returns sorted model ids on a happy 200 response, with auth for a keyed provider", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ id: "b-model" }, { id: "a-model" }] }), { status: 200 }),
+    );
+    const ids = await discoverModels(OLLAMA_CLOUD, "my-key");
+    expect(ids).toEqual(["a-model", "b-model"]);
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://ollama.com/v1/models");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer my-key");
+  });
+
+  it("omits the Authorization header when no apiKey is supplied (keyless local provider)", async () => {
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify({ data: [{ id: "m1" }] }), { status: 200 }));
+    await discoverModels(RAPID_MLX); // no apiKey
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
+  it("(b) returns [] when data is null", async () => {
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify({ data: null }), { status: 200 }));
+    expect(await discoverModels(OLLAMA_CLOUD)).toEqual([]);
+  });
+
+  it("(b) returns [] when data is missing entirely", async () => {
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify({ object: "list" }), { status: 200 }));
+    expect(await discoverModels(OLLAMA_CLOUD)).toEqual([]);
+  });
+
+  it("filters out non-object entries and entries whose id is not a string", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({ data: [{ id: "ok" }, null, { nope: 1 }, { id: 123 }, "raw-string" ] }),
+        { status: 200 },
+      ),
+    );
+    expect(await discoverModels(OLLAMA_CLOUD)).toEqual(["ok"]);
+  });
+
+  it("(c) throws with the status code on a non-200 response", async () => {
+    fetchSpy.mockResolvedValue(new Response("unauthorized", { status: 401, statusText: "Unauthorized" }));
+    await expect(discoverModels(OLLAMA_CLOUD, "bad-key")).rejects.toThrow(/401/);
+  });
+
+  it("(d) propagates a fetch rejection (e.g. an abort/timeout)", async () => {
+    const abort = new Error("The operation was aborted");
+    (abort as Error & { name: string }).name = "AbortError";
+    fetchSpy.mockRejectedValue(abort);
+    await expect(discoverModels(RAPID_MLX)).rejects.toThrow("The operation was aborted");
   });
 });

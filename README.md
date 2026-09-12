@@ -7,12 +7,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hashangit/openfusion/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.1-4cd0b0.svg" /></a>
+  <a href="https://github.com/hashangit/openfusion/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.2-4cd0b0.svg" /></a>
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <a href="https://nodejs.org"><img alt="Node" src="https://img.shields.io/badge/node-%E2%89%A522-3498db.svg" /></a>
-  <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.7-3178c6.svg" /></a>
+  <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7.0-3178c6.svg" /></a>
   <a href="https://modelcontextprotocol.io/"><img alt="MCP" src="https://img.shields.io/badge/MCP-server-1a2a3a.svg" /></a>
-  <img alt="Tests" src="https://img.shields.io/badge/tests-216%20passing-success.svg" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-217%20passing-success.svg" />
   <a href="./CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" /></a>
 </p>
 

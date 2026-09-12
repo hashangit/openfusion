@@ -16,7 +16,7 @@ import { saveConfig } from "../src/config/store.js";
 import { saveSecrets } from "../src/config/secrets.js";
 import { generateMasterKey } from "../src/config/crypto.js";
 import { registerModelDescriptor, clearModelDescriptors } from "../src/providers/pi-ai-bridge.js";
-import { registerFauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { registerFauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/compat";
 import type { DB } from "../src/store/db.js";
 
 let home: string;

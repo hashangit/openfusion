@@ -1,5 +1,12 @@
 // Provider bridge over @earendil-works/pi-ai. Single source for all LLM calls.
 // Injects apiKey per-call (pi-ai stores nothing).
+//
+// Imports come from "@earendil-works/pi-ai/compat", not the root entrypoint:
+// since pi-ai 0.80.0 the root is core-only and getModel/getModels/getProviders/
+// complete + the faux-provider test helpers live only on /compat, which pi-ai
+// documents as temporary (to be removed with the coding-agent ModelManager
+// migration). When that happens, this bridge must migrate to the new Models
+// runtime (createModels()/builtinModels()) — faux-provider tests included.
 import {
   getModel,
   getProviders,
@@ -9,8 +16,8 @@ import {
   type AssistantMessage,
   type Usage,
   type Api,
-} from "@earendil-works/pi-ai";
-import type { Model } from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/compat";
+import type { Model } from "@earendil-works/pi-ai/compat";
 import { CUSTOM_PROVIDERS, KEYLESS_PROVIDERS, buildModelDescriptor } from "./custom-providers.js";
 
 /**

@@ -12,7 +12,7 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
   type FauxResponseStep,
-} from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import { runFusion } from "../src/fusion/fusion.js";
 import { fusionStatusRegistry } from "../src/fusion/status.js";
 import { registerModelDescriptor, clearModelDescriptors } from "../src/providers/pi-ai-bridge.js";

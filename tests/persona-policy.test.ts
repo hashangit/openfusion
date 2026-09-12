@@ -9,7 +9,7 @@ import {
   registerFauxProvider,
   fauxAssistantMessage,
   fauxToolCall,
-} from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import { runFusion } from "../src/fusion/fusion.js";
 import { registerModelDescriptor, clearModelDescriptors } from "../src/providers/pi-ai-bridge.js";
 import { openDatabase } from "../src/store/db.js";

@@ -87,5 +87,10 @@ export const RawConfigSchema = z
     personas: z.array(PersonaSchema).optional().default([]),
     settings: SettingsSchema,
   })
-  .default({ settings: { workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false, activePersona: "generalist", personaPolicy: "allow-override", executionMode: "parallel" } });
+  .default({
+    candidates: [],
+    judges: [],
+    personas: [],
+    settings: { workerTimeoutMs: 300_000, uiPort: 9077, bind: "127.0.0.1", benchmarkMode: false, activePersona: "generalist", personaPolicy: "allow-override", executionMode: "parallel" },
+  });
 export type RawConfig = z.infer<typeof RawConfigSchema>;

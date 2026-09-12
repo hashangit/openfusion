@@ -10,7 +10,7 @@ import {
   fauxToolCall,
   fauxText,
   type FauxResponseFactory,
-} from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import { runWorker } from "../src/fusion/worker.js";
 import { runAnalysis, runSynthesis, analysisTool } from "../src/fusion/judge.js";
 import { runFusion } from "../src/fusion/fusion.js";

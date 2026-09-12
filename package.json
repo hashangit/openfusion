@@ -1,6 +1,6 @@
 {
   "name": "openfusion-mcp",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Local MCP server implementing OpenRouter's Fusion panel architecture: fan-out + two-step judge.",
   "license": "MIT",
   "author": "Hashan Wickramasinghe",
@@ -12,7 +12,18 @@
   "bugs": {
     "url": "https://github.com/hashangit/openfusion/issues"
   },
-  "keywords": ["mcp", "model-context-protocol", "fusion", "llm", "multi-model", "openrouter", "ai", "agent", "judge", "synthesis"],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "fusion",
+    "llm",
+    "multi-model",
+    "openrouter",
+    "ai",
+    "agent",
+    "judge",
+    "synthesis"
+  ],
   "type": "module",
   "engines": {
     "node": ">=22.19.0"
@@ -42,21 +53,21 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.79.4",
-    "@modelcontextprotocol/sdk": "1.29.0",
-    "better-sqlite3": "12.10.1",
+    "@earendil-works/pi-ai": "0.85.1",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "better-sqlite3": "13.0.3",
     "env-paths": "4.0.0",
     "express": "5.2.1",
-    "open": "11.0.0",
-    "zod": "3.25.67"
+    "open": "11.0.3",
+    "zod": "4.6.2"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "7.6.13",
-    "@types/express": "5.0.5",
-    "@types/node": "22.10.0",
-    "tsx": "4.19.2",
-    "typescript": "5.7.2",
-    "vitest": "2.1.8"
+    "@types/better-sqlite3": "9.6.0",
+    "@types/express": "5.0.6",
+    "@types/node": "22.20.2",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
   },
   "packageManager": "pnpm@11.6.0"
 }

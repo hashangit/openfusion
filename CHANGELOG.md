@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-13
+
+Dependency refresh across the whole stack. No behavior changes: every fusion path (MCP tool, Tasks, `_resume_from`, Playground) runs exactly as before, confirmed by the full test suite (217 tests) plus the production build on the new toolchain.
+
+### Changed (inference provider)
+- **pi-ai 0.79.4 → 0.85.1** — three months of provider fixes and catalog refreshes flow in: xAI models moved to the Responses API with Grok 4.6 as the new default, GPT-6 Astra added, corrected ZAI Coding Plan reasoning metadata (GLM-5.3 low/high/max), OpenRouter reasoning controls derived from model metadata so reasoning-mandatory models no longer receive `effort: "none"`, Anthropic thinking blocks with empty text but valid signatures are preserved on replay, and refreshed pricing across DeepSeek and others for accurate cost tracking.
+- **The provider bridge now imports from `@earendil-works/pi-ai/compat`.** pi-ai 0.80.0 split the package: the root entrypoint became core-only and the global API (`getModel`, `complete`, the faux-provider test helpers) moved to a compat entrypoint the upstream project describes as temporary. Signatures are unchanged. When upstream removes compat, the bridge migrates to the new `Models` runtime; a comment in `pi-ai-bridge.ts` records this. The deprecated `getModel`/`getModels`/`getProviders` aliases are still in use and resolve to the same functions as their `getBuiltin*` replacements.
+
+### Changed (server + storage)
+- **MCP SDK 1.29.0 → 1.30.0** — verified against the feature-008 handler-override contract with the dispatch canary tests (Tasks clients still get `CreateTaskResult` + `tasks/result`; non-Tasks `_resume_from` still kicks off deferred).
+- **better-sqlite3 12.10.1 → 13.0.3** — native module rebuilt; all activity/sub-call/fusion-jobs storage tests pass unchanged.
+- **zod 3.25.67 → 4.6.2** — the config schema used only v4-stable APIs. One fix was required: `RawConfigSchema`'s fallback value for a `parse(undefined)` call omitted `candidates`/`judges`/`personas` at runtime (a latent gap from the zod 3 era; no caller passes `undefined`, so nothing observable changed). The fallback now carries the full default shape.
+- **express 5.2.1, env-paths 4.0.0** unchanged at latest.
+
+### Changed (build + tooling, for anyone building from source)
+- **TypeScript 5.7.2 → 7.0.2** (the native-compiler release) — `tsc --noEmit` and the emit path both run clean; no source changes needed.
+- **vitest 2.1.8 → 5.0.0** — no config changes required; the suite runs as-is.
+- tsx 4.19.2 → 4.23.13, open 11.0.0 → 11.0.3, `@types/node` 22.10.0 → 22.20.2 (also clears the vite peer-dependency warning), `@types/express` 5.0.5 → 5.0.6, `@types/better-sqlite3` 7.6.13 → 9.6.0 (matches better-sqlite3 13).
+- All exact pins kept (`save-exact`), including the pre-1.0 pi-ai pin.
+
 ## [0.3.1] - 2026-07-04
 
 ### Added (Playground — run fusions from the browser)

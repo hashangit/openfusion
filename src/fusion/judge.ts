@@ -1,7 +1,7 @@
 // Judge: two steps on the SAME provider/model (Constitution II).
 // Step 1 = analysis via a forced record_analysis tool call.
 // Step 2 = synthesis text from candidates + analysis only.
-import { Type, type Tool, type Context } from "@earendil-works/pi-ai";
+import { Type, type Tool, type Context } from "@earendil-works/pi-ai/compat";
 import { runComplete, extractText, extractToolCall, totalCost, type AnyModel } from "../providers/pi-ai-bridge.js";
 import { withRetryTimeout } from "../util/timeout.js";
 

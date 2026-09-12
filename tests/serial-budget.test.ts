@@ -12,7 +12,7 @@ import {
   registerFauxProvider,
   fauxAssistantMessage,
   fauxToolCall,
-} from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import { runFusion } from "../src/fusion/fusion.js";
 import { runSequentialFanout, computeSerialBudgetMs, PER_CANDIDATE_MS, JUDGE_STEPS_MS } from "../src/fusion/fanout.js";
 import { runWorker, type WorkerInput } from "../src/fusion/worker.js";

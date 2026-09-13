@@ -30,11 +30,12 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # enables Pages (Actions source) and pins the custom domain on every deploy
+      # ensures Pages is enabled with the Actions build source (no-op once it
+      # exists). The custom domain rides in via website/public/CNAME in the
+      # deployed artifact and is registered on the Pages site itself.
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-          cname: openfusion.zyntopia.com
 
       - name: Install website dependencies
         run: pnpm install --filter ./website

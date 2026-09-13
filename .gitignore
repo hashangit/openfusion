@@ -13,6 +13,11 @@ ui-dist/
 ui/dist/
 *.tsbuildinfo
 
+# ---- Docs website (VitePress) ----
+website/node_modules/
+website/.vitepress/cache/
+website/.vitepress/dist/
+
 # ---- Logs / temp ----
 *.log
 npm-debug.log*

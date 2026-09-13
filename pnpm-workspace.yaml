@@ -1,5 +1,6 @@
 packages:
   - "ui"
+  - "website"
 onlyBuiltDependencies:
   - better-sqlite3
   - esbuild

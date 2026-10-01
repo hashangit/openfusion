@@ -10,6 +10,9 @@ export default defineConfig({
   description:
     'Many models. One considered answer. A local MCP server that fans your prompt out to a panel of AI models, then has a judge write the single answer that should ship.',
   base: BASE,
+  sitemap: {
+    hostname: SITE_URL
+  },
   srcDir: '.',
   appearance: false,
   ignoreDeadLinks: false,
@@ -37,7 +40,21 @@ export default defineConfig({
       }
     ],
     ['meta', { property: 'og:image', content: SITE_URL + '/og.png' }],
-    ['meta', { name: 'twitter:card', content: 'summary_large_image' }]
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    [
+      'script',
+      {
+        src: 'https://analytics.zyntopia.com/sdk.js',
+        defer: '',
+        onload:
+          "window.smolanalytics ? window.smolanalytics.init('7948c26a8e21b761a67923155301b7e1', { host: 'https://analytics.zyntopia.com' }) : null"
+      }
+    ],
+    [
+      'script',
+      {},
+      "window.addEventListener('DOMContentLoaded', function() { if (window.smolanalytics) { window.smolanalytics.init('7948c26a8e21b761a67923155301b7e1', { host: 'https://analytics.zyntopia.com' }); } });"
+    ]
   ],
   markdown: {
     theme: 'github-dark'

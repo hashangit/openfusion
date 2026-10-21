@@ -54,7 +54,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.85.1",
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "better-sqlite3": "13.0.3",
     "env-paths": "4.0.0",
     "express": "5.2.1",

@@ -59,7 +59,7 @@
     "env-paths": "4.0.0",
     "express": "5.2.1",
     "open": "11.0.3",
-    "zod": "4.6.2"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",
